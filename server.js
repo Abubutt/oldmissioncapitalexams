@@ -7,6 +7,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { generateExam } = require('./lib/generateExam');
 const { readHistory, recordResults } = require('./lib/history');
 const { getProvider } = require('./lib/providers');
+const { getStore } = require('./lib/historyStore');
 
 const PROVIDER_NAME = (process.env.LLM_PROVIDER || 'anthropic').toLowerCase();
 
@@ -35,6 +36,8 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 // If ACCESS_CODE isn't set (e.g. local dev), the app is open — no gate.
 // If it is set (e.g. a public deploy), every protected route requires it.
 function requireAccessCode(req, res, next) {
@@ -44,21 +47,39 @@ function requireAccessCode(req, res, next) {
   res.status(401).json({ error: 'unauthorized', message: 'Invalid or missing access code.' });
 }
 
+// Email is the per-person storage key (not an authenticated identity — no
+// confirmation link, no password). It's what lets someone come back and see
+// their own progress with just the access code + the same email, without
+// building real accounts.
+function requireEmail(req, res, next) {
+  const email = (req.headers['x-user-email'] || '').toString().trim().toLowerCase();
+  if (!EMAIL_RE.test(email)) {
+    return res.status(400).json({ error: 'invalid_email', message: 'A valid email is required.' });
+  }
+  req.userKey = email;
+  next();
+}
+
 app.get('/api/gate-status', (req, res) => {
   res.json({ required: Boolean(process.env.ACCESS_CODE) });
 });
 
 app.post('/api/login', (req, res) => {
+  const { code, email } = req.body || {};
+  const normalizedEmail = (email || '').toString().trim().toLowerCase();
+  if (!EMAIL_RE.test(normalizedEmail)) {
+    return res.status(400).json({ ok: false, message: 'Enter a valid email.' });
+  }
   const configured = process.env.ACCESS_CODE;
-  if (!configured) return res.json({ ok: true });
-  const { code } = req.body || {};
-  if (code === configured) return res.json({ ok: true });
-  res.status(401).json({ ok: false, message: 'Incorrect access code.' });
+  if (configured && code !== configured) {
+    return res.status(401).json({ ok: false, message: 'Incorrect access code.' });
+  }
+  res.json({ ok: true });
 });
 
-app.post('/api/generate-exam', requireAccessCode, async (req, res) => {
+app.post('/api/generate-exam', requireAccessCode, requireEmail, async (req, res) => {
   try {
-    const questions = await generateExam();
+    const questions = await generateExam(req.userKey);
     res.json({ questions });
   } catch (err) {
     console.error('[POST /api/generate-exam] failed:', err);
@@ -108,9 +129,9 @@ app.post('/api/generate-exam', requireAccessCode, async (req, res) => {
   }
 });
 
-app.post('/api/record-results', requireAccessCode, async (req, res) => {
+app.post('/api/record-results', requireAccessCode, requireEmail, async (req, res) => {
   try {
-    const summary = await recordResults(req.body || {});
+    const summary = await recordResults(req.userKey, req.body || {});
     res.json({ ok: true, summary });
   } catch (err) {
     console.error('[POST /api/record-results] failed:', err);
@@ -118,9 +139,9 @@ app.post('/api/record-results', requireAccessCode, async (req, res) => {
   }
 });
 
-app.get('/api/history', requireAccessCode, async (req, res) => {
+app.get('/api/history', requireAccessCode, requireEmail, async (req, res) => {
   try {
-    res.json(await readHistory());
+    res.json(await readHistory(req.userKey));
   } catch (err) {
     console.error('[GET /api/history] failed:', err);
     res.status(500).json({ error: 'history_read_failed', message: err.message });
@@ -129,6 +150,8 @@ app.get('/api/history', requireAccessCode, async (req, res) => {
 
 app.listen(PORT, () => {
   const provider = getProvider();
+  const store = getStore();
   console.log(`Old Mission practice exam app running at http://localhost:${PORT}`);
   console.log(`Adaptive question generation provider: ${provider.name} (model: ${provider.MODEL})`);
+  console.log(`History store: ${store.name}`);
 });

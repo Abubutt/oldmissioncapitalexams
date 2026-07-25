@@ -172,6 +172,7 @@
   }
   .gate-input:focus{outline:none;border-color:var(--amber-dim);}
   .gate-error{color:var(--red);font-size:12.5px;margin-top:12px;}
+  .gate-hint{color:var(--text-dim);font-size:11.5px;margin-top:12px;}
 </style>
 </head>
 <body>
@@ -248,12 +249,24 @@ let QUESTIONS = DEFAULT_QUESTIONS;
 let historyCache = null;
 
 const ACCESS_CODE_KEY = 'omc_access_code';
+const EMAIL_KEY = 'omc_email';
+const LOCAL_DEV_EMAIL = 'local@localhost.dev'; // used silently when no access code is configured
+
 function getStoredAccessCode(){ return localStorage.getItem(ACCESS_CODE_KEY) || ''; }
 function setStoredAccessCode(code){ localStorage.setItem(ACCESS_CODE_KEY, code); }
-function clearStoredAccessCode(){ localStorage.removeItem(ACCESS_CODE_KEY); }
+function getStoredEmail(){ return localStorage.getItem(EMAIL_KEY) || ''; }
+function setStoredEmail(email){ localStorage.setItem(EMAIL_KEY, email); }
+function clearStoredAuth(){
+  localStorage.removeItem(ACCESS_CODE_KEY);
+  localStorage.removeItem(EMAIL_KEY);
+}
 function authHeaders(){
+  const headers = {};
   const code = getStoredAccessCode();
-  return code ? { 'X-Access-Code': code } : {};
+  const email = getStoredEmail();
+  if(code) headers['X-Access-Code'] = code;
+  if(email) headers['X-User-Email'] = email;
+  return headers;
 }
 
 const TOTAL_SECONDS = 50 * 60;
@@ -313,7 +326,7 @@ async function submitExam(){
       body: JSON.stringify({ questions: QUESTIONS, answers: state.answers })
     });
     if(res.status === 401){
-      clearStoredAccessCode();
+      clearStoredAuth();
       renderGate('Session expired — enter the access code again.');
       return;
     }
@@ -344,7 +357,7 @@ async function generateNewExam(){
     const res = await fetch('/api/generate-exam', { method: 'POST', headers: authHeaders() });
 
     if(res.status === 401){
-      clearStoredAccessCode();
+      clearStoredAuth();
       state.generating = false;
       renderGate('Session expired — enter the access code again.');
       return;
@@ -614,43 +627,55 @@ function confirmSubmit(){
   submitExam();
 }
 
+let gateRequiresCode = false; // set by init() from /api/gate-status
+
 function renderGate(errorMsg){
   const root = document.getElementById('root');
   root.innerHTML = `
     <div class="gate-wrap">
       <div class="card gate-card">
         <div class="brand-name mono">OLD MISSION CAPITAL</div>
-        <div class="brand-title" style="margin-bottom:18px;">Practice Exam — Access Code Required</div>
+        <div class="brand-title" style="margin-bottom:18px;">${gateRequiresCode ? 'Practice Exam — Access Required' : 'Practice Exam — Enter Your Email'}</div>
         ${errorMsg ? `<div class="gate-error mono">${esc(errorMsg)}</div>` : ''}
-        <input id="gateInput" class="gate-input mono" type="password" placeholder="Enter access code" autocomplete="off" />
-        <button class="btn primary" style="margin-top:14px;width:100%;" onclick="submitAccessCode()">Enter</button>
+        <input id="gateEmailInput" class="gate-input mono" type="email" placeholder="you@example.com" autocomplete="email" />
+        ${gateRequiresCode ? `<input id="gateCodeInput" class="gate-input mono" style="margin-top:10px;" type="password" placeholder="Enter access code" autocomplete="off" />` : ''}
+        <button class="btn primary" style="margin-top:14px;width:100%;" onclick="submitGate()">Enter</button>
+        <div class="gate-hint mono">${gateRequiresCode ? 'Your email keeps your own progress separate from everyone else’s.' : ''}</div>
       </div>
     </div>
   `;
-  const input = document.getElementById('gateInput');
-  input.focus();
-  input.addEventListener('keydown', (e)=>{ if(e.key==='Enter') submitAccessCode(); });
+  const emailInput = document.getElementById('gateEmailInput');
+  emailInput.focus();
+  const onEnter = (e)=>{ if(e.key==='Enter') submitGate(); };
+  emailInput.addEventListener('keydown', onEnter);
+  const codeInput = document.getElementById('gateCodeInput');
+  if(codeInput) codeInput.addEventListener('keydown', onEnter);
 }
 
-async function submitAccessCode(){
-  const input = document.getElementById('gateInput');
-  const code = input.value.trim();
-  if(!code){ renderGate('Enter an access code.'); return; }
+async function submitGate(){
+  const email = document.getElementById('gateEmailInput').value.trim().toLowerCase();
+  const codeInput = document.getElementById('gateCodeInput');
+  const code = codeInput ? codeInput.value.trim() : '';
+
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ renderGate('Enter a valid email.'); return; }
+  if(gateRequiresCode && !code){ renderGate('Enter the access code.'); return; }
+
   try{
     const res = await fetch('/api/login', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({code})
+      body: JSON.stringify({code, email})
     });
     const data = await res.json();
     if(res.ok && data.ok){
-      setStoredAccessCode(code);
+      setStoredEmail(email);
+      if(gateRequiresCode) setStoredAccessCode(code);
       boot();
     } else {
-      renderGate(data.message || 'Incorrect access code.');
+      renderGate(data.message || 'Could not verify — check your email and access code.');
     }
   }catch(err){
-    renderGate('Network error verifying access code: ' + err.message);
+    renderGate('Network error verifying access: ' + err.message);
   }
 }
 
@@ -661,34 +686,37 @@ function boot(){
 }
 
 (async function init(){
-  let gateRequired = false;
   try{
     const res = await fetch('/api/gate-status');
     const data = await res.json();
-    gateRequired = Boolean(data.required);
+    gateRequiresCode = Boolean(data.required);
   }catch(err){
     console.warn('Could not check gate status, assuming open:', err);
   }
 
-  if(!gateRequired){
+  if(!gateRequiresCode){
+    // Local/open dev: no access code configured, so skip the gate entirely
+    // and use a fixed identity — every visitor here is you.
+    if(!getStoredEmail()) setStoredEmail(LOCAL_DEV_EMAIL);
     boot();
     return;
   }
 
-  const stored = getStoredAccessCode();
-  if(stored){
+  const storedEmail = getStoredEmail();
+  const storedCode = getStoredAccessCode();
+  if(storedEmail && storedCode){
     try{
       const res = await fetch('/api/login', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({code: stored})
+        body: JSON.stringify({code: storedCode, email: storedEmail})
       });
       const data = await res.json();
       if(res.ok && data.ok){ boot(); return; }
     }catch(err){
-      console.warn('Could not verify stored access code:', err);
+      console.warn('Could not verify stored access:', err);
     }
-    clearStoredAccessCode();
+    clearStoredAuth();
   }
   renderGate();
 })();

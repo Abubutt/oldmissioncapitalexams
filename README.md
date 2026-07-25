@@ -182,12 +182,48 @@ Locally with no `ACCESS_CODE` set, the gate is skipped entirely and every
 request uses a fixed local identity — solo local use stays exactly as
 frictionless as before this existed.
 
+**Why a refresh doesn't ask again.** The gate screen only appears once per
+browser. On success, the email + access code are stored in `localStorage`;
+every later page load silently re-POSTs them to `/api/login` in the
+background and boots straight in if they're still valid — no code is
+skipped, it's just automatic instead of retyped. If `ACCESS_CODE` is ever
+changed on the server, that silent re-check fails and the gate reappears.
+This is "remember this browser," not a security boundary on its own — anyone
+with access to a device where you're already logged in can use the app
+without the code, same as most session-based sites. Fine for this app's
+threat model (don't let strangers spend your API key); there's no explicit
+log-out, since clearing the site's local storage does the same thing.
+
+## Dashboard
+
+Logging in (or a silent re-verify on refresh) lands on a dashboard, not
+straight into an exam:
+
+- **Lifetime Stats** — accuracy per section across every exam that email has
+  ever taken.
+- **Past Exams** — every recorded exam, newest first, as `score (pct%)` +
+  timestamp. Click one to open a full review of that exact exam: score,
+  that run's per-section breakdown, and every question with your answer and
+  the correct one marked — the same review UI as the results screen, just
+  scoped to a specific historical run instead of the one you just took.
+- Empty state (new email, 0 exams) shows the same layout with "—" for every
+  section and "No exams taken yet" instead of erroring or hiding the page.
+- "Take Practice Exam" / "Generate New Exam" both start fresh from here, same
+  as they always did — the dashboard is a new front door, not a detour.
+
+This is why each stored run now includes its full question/answer set, not
+just a score — see "Persistence" below. Exams recorded before this was added
+show the score and section breakdown but not a question-level review, and
+say so rather than pretending the data exists.
+
 ## Persistence
 
-Each user's history — per-section totals and a rolling list of their last
-~150 seen question texts (to avoid exact repeats) — is tracked separately,
-keyed by the email they entered at the gate. Updated every time that user
-submits an exam (`POST /api/record-results`).
+Each user's history — per-section lifetime totals, a rolling list of their
+last ~150 seen question texts (to avoid exact repeats), and up to the last 30
+full exam runs (score, per-section breakdown, and the exact questions +
+answers, for the dashboard's per-exam review) — is tracked separately, keyed
+by the email they entered at the gate. Updated every time that user submits
+an exam (`POST /api/record-results`).
 
 By default this is a JSON file per user under `data/history/` (plus a
 one-time fallback read of the old pre-multi-user `data/history.json`, so nothing

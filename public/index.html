@@ -155,10 +155,24 @@
     padding:8px 4px;border-bottom:1px solid var(--line);
   }
   .hist-row:last-child{border-bottom:none;}
+  .hist-row.two-col{grid-template-columns:1fr 110px;}
   .hist-header{color:var(--text-dim);font-size:10px;letter-spacing:0.5px;padding-bottom:10px;}
   .hist-name{font-size:13px;}
   .hist-val{font-size:13px;text-align:right;}
   .hist-unavailable{font-size:12px;color:var(--text-dim);}
+
+  /* ===== Dashboard: past-exams list ===== */
+  .run-list{display:flex;flex-direction:column;gap:8px;margin-bottom:20px;}
+  .run-row{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:14px 18px;border:1px solid var(--line);border-radius:6px;
+    background:var(--panel-2);cursor:pointer;transition:border-color .15s,background .15s;
+  }
+  .run-row:hover{border-color:var(--amber-dim);background:#171d24;}
+  .run-score{font-size:15px;font-weight:600;}
+  .run-pct{color:var(--text-dim);font-weight:400;}
+  .run-date{font-size:11.5px;color:var(--text-dim);margin-top:4px;}
+  .run-arrow{color:var(--text-dim);font-size:16px;}
 
   .footer-note{color:var(--text-dim);font-size:12px;text-align:center;margin-top:30px;font-family:'IBM Plex Mono',monospace;}
 
@@ -247,6 +261,8 @@ const DEFAULT_QUESTIONS = [
 
 let QUESTIONS = DEFAULT_QUESTIONS;
 let historyCache = null;
+let appView = 'dashboard'; // 'dashboard' | 'exam' | 'runDetail'
+let selectedRunIndex = null; // index into historyCache.runs, when appView === 'runDetail'
 
 const ACCESS_CODE_KEY = 'omc_access_code';
 const EMAIL_KEY = 'omc_email';
@@ -332,7 +348,7 @@ async function submitExam(){
     }
     if(res.ok){
       const data = await res.json();
-      historyCache = { examsTaken: data.summary.examsTaken, sections: data.summary.sections };
+      historyCache = { examsTaken: data.summary.examsTaken, sections: data.summary.sections, runs: data.summary.runs };
     }
   }catch(err){
     console.warn('Could not record results to history:', err);
@@ -340,10 +356,11 @@ async function submitExam(){
   render();
 }
 
-function retake(){
+function startExam(){
   const oldTimerId = state.timerId;
   if(oldTimerId) clearInterval(oldTimerId);
   state = {current:0, answers:new Array(QUESTIONS.length).fill(null), submitted:false, timeLeft: TOTAL_SECONDS, timerId:null, reviewFilter:'all', generating:false};
+  appView = 'exam';
   render();
   startTimer();
 }
@@ -376,6 +393,7 @@ async function generateNewExam(){
     const oldTimerId = state.timerId;
     if(oldTimerId) clearInterval(oldTimerId);
     state = {current:0, answers:new Array(QUESTIONS.length).fill(null), submitted:false, timeLeft: TOTAL_SECONDS, timerId:null, reviewFilter:'all', generating:false};
+    appView = 'exam';
     render();
     startTimer();
   }catch(err){
@@ -461,6 +479,12 @@ function renderHistoryPanel(perSectionThisRun){
 }
 
 function render(){
+  if(appView === 'dashboard'){ renderDashboard(); return; }
+  if(appView === 'runDetail'){ renderRunDetail(); return; }
+  renderExam();
+}
+
+function renderExam(){
   const root = document.getElementById('root');
   const answeredCount = state.answers.filter(a=>a!==null).length;
 
@@ -568,7 +592,8 @@ function render(){
       <div class="review-toggle">
         <button class="btn ${state.reviewFilter==='all'?'primary':''}" onclick="setFilter('all')">Review All (${total})</button>
         <button class="btn ${state.reviewFilter==='wrong'?'primary':''}" onclick="setFilter('wrong')">Review Incorrect Only (${total-correct})</button>
-        <button class="btn ghost" onclick="retake()">↻ Retake Exam</button>
+        <button class="btn ghost" onclick="startExam()">↻ Retake Exam</button>
+        <button class="btn ghost" onclick="goToDashboard()">📊 View All Exams</button>
       </div>
 
       <div id="reviewList"></div>
@@ -580,25 +605,195 @@ function render(){
   }
 }
 
+function goToDashboard(){
+  const oldTimerId = state.timerId;
+  if(oldTimerId) clearInterval(oldTimerId);
+  appView = 'dashboard';
+  render();
+}
+
+function viewRun(idx){
+  selectedRunIndex = idx;
+  appView = 'runDetail';
+  render();
+}
+
+function renderDashboardSummary(){
+  if(!historyCache){
+    return `<div class="card history-card"><div class="section-tag mono">Lifetime Stats</div><div class="hist-unavailable mono">History unavailable — server may be offline.</div></div>`;
+  }
+  const rows = SECTIONS.map((name)=>{
+    const sec = historyCache.sections && historyCache.sections[name];
+    const pct = sec && sec.totalAnswered ? Math.round((sec.totalCorrect/sec.totalAnswered)*100) : null;
+    return `
+      <div class="hist-row two-col">
+        <div class="hist-name mono">${name}</div>
+        <div class="hist-val mono">${pct===null?'—':pct+'%'}</div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="card history-card">
+      <div class="section-tag mono">Lifetime Stats</div>
+      <div class="hist-summary mono">Total exams taken: <strong>${historyCache.examsTaken || 0}</strong></div>
+      <div class="hist-table">
+        <div class="hist-row hist-header two-col mono">
+          <div class="hist-name">SECTION</div>
+          <div class="hist-val">ACCURACY</div>
+        </div>
+        ${rows}
+      </div>
+    </div>
+  `;
+}
+
+function renderRunList(){
+  if(!historyCache || !Array.isArray(historyCache.runs) || !historyCache.runs.length){
+    return `<div class="card"><div class="hist-unavailable mono">No exams taken yet — start one below.</div></div>`;
+  }
+  const withIdx = historyCache.runs.map((run, idx) => ({run, idx})).reverse();
+  return `<div class="run-list">${withIdx.map(({run, idx})=>{
+    const pct = run.total ? Math.round((run.correct/run.total)*100) : 0;
+    const d = new Date(run.date);
+    const dateStr = isNaN(d) ? '' : d.toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'}) + ' · ' + d.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
+    const color = pct>=70?'var(--green)':(pct>=50?'var(--amber)':'var(--red)');
+    return `
+      <div class="run-row" onclick="viewRun(${idx})">
+        <div>
+          <div class="run-score mono" style="color:${color}">${run.correct}/${run.total} <span class="run-pct mono">(${pct}%)</span></div>
+          <div class="run-date mono">${dateStr}</div>
+        </div>
+        <div class="run-arrow mono">→</div>
+      </div>
+    `;
+  }).join('')}</div>`;
+}
+
+function renderDashboard(){
+  const root = document.getElementById('root');
+  root.innerHTML = `
+    <div class="termbar">
+      <div class="brand">
+        <div class="dot"></div>
+        <div>
+          <div class="brand-name mono">OLD MISSION CAPITAL</div>
+          <div class="brand-title">Dashboard</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="examctl">
+      <button class="btn primary" onclick="startExam()">↻ Take Practice Exam</button>
+      <button class="btn genbtn" onclick="generateNewExam()" ${state.generating?'disabled':''}>
+        ${state.generating ? '<span class="spin">&#9696;</span> Generating…' : '&#9889; Generate New Exam'}
+      </button>
+      <span class="examctl-hint mono">${state.generating ? 'Calling the model for all 6 sections in parallel — ~15–30s for Claude, can take a few minutes on a local model' : 'Adaptive: weaker sections get more new questions (min 4 per section)'}</span>
+    </div>
+
+    ${renderDashboardSummary()}
+
+    <div class="section-tag mono" style="margin: 4px 0 12px;">PAST EXAMS</div>
+    ${renderRunList()}
+
+    <div class="footer-note">Click any past exam to review its questions and answers</div>
+  `;
+}
+
+function renderRunDetail(){
+  const root = document.getElementById('root');
+  const run = historyCache && Array.isArray(historyCache.runs) ? historyCache.runs[selectedRunIndex] : null;
+
+  if(!run){
+    root.innerHTML = `
+      <div class="termbar">
+        <div class="brand"><div class="dot"></div><div><div class="brand-name mono">OLD MISSION CAPITAL</div><div class="brand-title">Exam Review</div></div></div>
+      </div>
+      <div class="card">Exam not found. <button class="btn ghost" onclick="goToDashboard()">← Dashboard</button></div>
+    `;
+    return;
+  }
+
+  const pct = run.total ? Math.round((run.correct/run.total)*100) : 0;
+  const pass = pct >= 70;
+  const d = new Date(run.date);
+  const dateStr = isNaN(d) ? '' : d.toLocaleString();
+  const hasDetail = Array.isArray(run.questions) && Array.isArray(run.answers);
+
+  root.innerHTML = `
+    <div class="termbar">
+      <div class="brand">
+        <div class="dot" style="background:${pass?'var(--green)':'var(--red)'}"></div>
+        <div>
+          <div class="brand-name mono">OLD MISSION CAPITAL</div>
+          <div class="brand-title">Exam Review</div>
+        </div>
+      </div>
+      <div class="timer mono" style="color:var(--text-dim);border-color:var(--line);background:transparent;">${dateStr}</div>
+    </div>
+
+    <div class="examctl">
+      <button class="btn ghost" onclick="goToDashboard()">← Dashboard</button>
+    </div>
+
+    <div class="results-hero">
+      <div class="score-big mono">${run.correct}/${run.total}</div>
+      <div class="score-sub mono">${pct}% CORRECT</div>
+    </div>
+
+    ${Array.isArray(run.perSection) ? `
+      <div class="section-breakdown">
+        ${run.perSection.map((s)=>{
+          const p = s.total ? Math.round((s.correct/s.total)*100) : 0;
+          const color = p>=70?'var(--green)':(p>=50?'var(--amber)':'var(--red)');
+          return `
+            <div class="sb-card">
+              <div class="sb-name mono">${s.name}</div>
+              <div class="sb-score mono" style="color:${color}">${s.correct}/${s.total}</div>
+              <div class="sb-bar"><div class="sb-fill" style="width:${p}%;background:${color}"></div></div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    ` : ''}
+
+    ${hasDetail ? `
+      <div class="review-toggle">
+        <button class="btn ${state.reviewFilter==='all'?'primary':''}" onclick="setRunFilter('all')">Review All (${run.total})</button>
+        <button class="btn ${state.reviewFilter==='wrong'?'primary':''}" onclick="setRunFilter('wrong')">Review Incorrect Only (${run.total-run.correct})</button>
+      </div>
+      <div id="runReviewList"></div>
+    ` : `
+      <div class="footer-note">Detailed question review isn't available for exams recorded before this feature was added.</div>
+    `}
+  `;
+
+  if(hasDetail){
+    document.getElementById('runReviewList').innerHTML = renderReviewCards(run.questions, run.answers, state.reviewFilter);
+  }
+}
+
+function setRunFilter(f){
+  state.reviewFilter = f;
+  render();
+}
+
 function setFilter(f){
   state.reviewFilter = f;
   render();
 }
 
-function renderReview(){
-  const el = document.getElementById('reviewList');
-  if(!el) return;
-  const items = QUESTIONS.map((q,i)=>({q,i})).filter(({q,i})=>{
-    if(state.reviewFilter==='wrong') return state.answers[i] !== q.a;
+function renderReviewCards(questions, answers, filter){
+  const items = questions.map((q,i)=>({q,i})).filter(({q,i})=>{
+    if(filter==='wrong') return answers[i] !== q.a;
     return true;
   });
 
-  el.innerHTML = items.map(({q,i})=>{
-    const userAns = state.answers[i];
+  return items.map(({q,i})=>{
+    const userAns = answers[i];
     return `
       <div class="card">
         <div class="section-tag mono">${SECTIONS[q.s]}</div>
-        <div class="qnum mono">QUESTION ${i+1}${userAns===q.a ? ' · CORRECT' : (userAns===null ? ' · SKIPPED' : ' · INCORRECT')}</div>
+        <div class="qnum mono">QUESTION ${i+1}${userAns===q.a ? ' · CORRECT' : (userAns===null||userAns===undefined ? ' · SKIPPED' : ' · INCORRECT')}</div>
         <div class="qtext">${esc(q.q)}${q.code?`<span class="codeblock">${esc(q.code)}</span>`:''}</div>
         <div class="options">
           ${q.opts.map((opt,oi)=>{
@@ -616,6 +811,12 @@ function renderReview(){
       </div>
     `;
   }).join('');
+}
+
+function renderReview(){
+  const el = document.getElementById('reviewList');
+  if(!el) return;
+  el.innerHTML = renderReviewCards(QUESTIONS, state.answers, state.reviewFilter);
 }
 
 function confirmSubmit(){
@@ -679,10 +880,10 @@ async function submitGate(){
   }
 }
 
-function boot(){
-  fetchHistory();
+async function boot(){
+  await fetchHistory();
+  appView = 'dashboard';
   render();
-  startTimer();
 }
 
 (async function init(){

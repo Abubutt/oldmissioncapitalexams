@@ -115,6 +115,34 @@ provider to use when it matters. Uses OpenAI's JSON mode
 (`response_format: {type: "json_object"}`) plus the same object-wrapper
 schema and validate-then-retry-once logic as the other two providers.
 
+**Token/cost efficiency.** The server logs real per-call usage and running
+session cost to the console (`[openai] 338 in + 407 out = 745 tokens
+(~$0.0049, session total ~$0.0249)`) — no separate dashboard needed to see
+what a click of "Generate New Exam" actually costs. Two measured, no-quality-
+loss changes cut the actual bill:
+- **Explicit conciseness instruction** in the system prompt (one sentence per
+  question where possible, tight options, no filler) — cut output tokens
+  (the expensive side: output is priced 4x input on `gpt-4o`) from 750→407
+  per section on a live test, no drop in spot-checked correctness.
+- **Trimmed the recent-questions dedup sample from 40→15** — the last 25
+  items were adding ~800 input tokens per section for an established user
+  with no measurable dedup benefit; 15 recent examples is already enough
+  signal to steer the model away from repeats.
+- Net measured result, real app run: **a full 50-question exam dropped from
+  ~$0.0495 to ~$0.032 (~35%)** for a fresh user, ~26% for an established one
+  with a full dedup list. `max_tokens` was also recalibrated down to match
+  the new shorter output (a safety ceiling, not itself a cost — only tokens
+  actually generated are billed) but kept with real headroom since that
+  prompt is shared with the Ollama/Anthropic paths, which may not shrink
+  output as reliably as `gpt-4o` did.
+- Cheaper model tiers exist if you want to go further —
+  `gpt-4o-mini` is roughly **16x cheaper** than `gpt-4o`
+  ($0.15/$0.60 vs $2.50/$10.00 per 1M input/output tokens) — but that
+  tradeoff hasn't been quality-tested here the way `gpt-4o` was, so it isn't
+  the default. Set `OPENAI_MODEL=gpt-4o-mini` in `.env` to try it; the same
+  spot-check-your-answers advice applies until someone verifies it the way
+  `llama3:8b` was.
+
 ## How adaptive generation works
 
 1. On "Generate New Exam," the backend reads the current user's history and

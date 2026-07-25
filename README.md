@@ -201,6 +201,39 @@ The chosen section is sticky: retaking an exam (`↻ Retake Exam` on the
 results screen) reuses whatever focus was active for the exam you just took,
 not whatever the dropdown currently shows.
 
+### Difficulty
+
+The dashboard's "Difficulty" dropdown (Easy / Medium / Hard, defaults to
+Medium — the original fixed calibration this app always used) is sent as
+`difficulty` and folded into every section's system prompt as a calibration
+paragraph (`DIFFICULTY_GUIDANCE` in `lib/generateExam.js`), same style/schema
+requirements either way. Only affects **Generate New Exam** — the static
+question bank has one fixed difficulty and isn't recalibrated by this
+setting.
+
+**Verified this produces a real behavioral difference, not just prompt
+theater** — generated matched easy vs. hard 8-question C++ sets and read
+every question. Easy: operator syntax, `const`, pointer declaration syntax,
+access specifiers, `sizeof(char)` — genuinely introductory. Hard: object
+slicing, `x = x++ + ++x` sequencing, `delete` on a null pointer, virtual
+dispatch inside a constructor — genuinely advanced, requiring real C++
+experience rather than course recall.
+
+**Found a real correctness error in the hard set while verifying it,
+worth knowing about.** One hard question asked about `volatile` and marked
+"ensures updates are visible to other threads" as correct — that's a
+widely-held misconception, not true. `volatile` in C++ only prevents the
+compiler from optimizing away repeated reads of that memory location (for
+things like memory-mapped I/O); it gives no thread-synchronization or
+cross-thread visibility guarantee at all — that's what `std::atomic` or a
+real synchronization primitive is for. All 8 easy-tier questions checked out
+correct in the same test; this was the only error across 16 total, and it
+landed specifically in the tier explicitly asked to probe "common
+misconceptions" — which is exactly the territory where a model can end up
+reproducing a misconception as fact instead of testing it. Treat hard-tier
+answers with a bit more skepticism than easy/medium, the same spirit as the
+Ollama and material-only caveats elsewhere in this README.
+
 ## Study materials (RAG-lite grounding)
 
 You can feed the generator real source material — a PDF or pasted text — so

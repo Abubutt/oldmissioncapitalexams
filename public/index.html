@@ -409,6 +409,7 @@ async function submitExam(){
 let activeFocusSection = null; // null = all sections; sticky across retakes until explicitly changed
 let lastMaterialMode = 'blend';
 let lastTotalQuestions = 50;
+let lastDifficulty = 'medium';
 
 function startExam(focusSection){
   const section = focusSection !== undefined ? focusSection : activeFocusSection;
@@ -429,14 +430,16 @@ function startExam(focusSection){
   render();
 }
 
-async function generateNewExam(focusSection, materialMode, totalQuestions){
+async function generateNewExam(focusSection, materialMode, totalQuestions, difficulty){
   if(state.generating) return;
   const section = focusSection !== undefined ? focusSection : activeFocusSection;
   const mode = materialMode !== undefined ? materialMode : lastMaterialMode;
   const count = totalQuestions !== undefined && totalQuestions !== null && !isNaN(totalQuestions) ? totalQuestions : lastTotalQuestions;
+  const level = difficulty !== undefined ? difficulty : lastDifficulty;
   activeFocusSection = section;
   lastMaterialMode = mode;
   lastTotalQuestions = count;
+  lastDifficulty = level;
 
   state.generating = true;
   render();
@@ -445,7 +448,7 @@ async function generateNewExam(focusSection, materialMode, totalQuestions){
     const res = await fetch('/api/generate-exam', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', ...authHeaders()},
-      body: JSON.stringify({ focusSection: section, materialMode: mode, totalQuestions: count })
+      body: JSON.stringify({ focusSection: section, materialMode: mode, totalQuestions: count, difficulty: level })
     });
 
     if(res.status === 401){
@@ -853,6 +856,11 @@ function readTotalQuestions(){
   return isNaN(n) ? lastTotalQuestions : Math.max(5, Math.min(150, n));
 }
 
+function readDifficulty(){
+  const el = document.getElementById('difficultySelect');
+  return el ? el.value : lastDifficulty;
+}
+
 function renderExamOptions(){
   return `
     <div class="exam-opts">
@@ -864,6 +872,13 @@ function renderExamOptions(){
       </label>
       <label class="opt-label mono">Questions to generate
         <input id="totalQuestionsInput" class="opt-select mono" type="number" min="5" max="150" step="5" value="${lastTotalQuestions}" style="width:80px;" />
+      </label>
+      <label class="opt-label mono">Difficulty
+        <select id="difficultySelect" class="opt-select mono">
+          <option value="easy" ${lastDifficulty==='easy'?'selected':''}>Easy</option>
+          <option value="medium" ${lastDifficulty==='medium'?'selected':''}>Medium</option>
+          <option value="hard" ${lastDifficulty==='hard'?'selected':''}>Hard</option>
+        </select>
       </label>
       ${materialsCache.length ? `
       <label class="opt-label mono">Material use
@@ -944,10 +959,10 @@ function renderDashboard(){
     <div class="examctl">
       ${renderExamOptions()}
       <button class="btn primary" onclick="startExam(readFocusSection())">↻ Take Practice Exam</button>
-      <button class="btn genbtn" onclick="generateNewExam(readFocusSection(), readMaterialMode(), readTotalQuestions())" ${state.generating?'disabled':''}>
+      <button class="btn genbtn" onclick="generateNewExam(readFocusSection(), readMaterialMode(), readTotalQuestions(), readDifficulty())" ${state.generating?'disabled':''}>
         ${state.generating ? '<span class="spin">&#9696;</span> Generating…' : '&#9889; Generate New Exam'}
       </button>
-      <span class="examctl-hint mono">${state.generating ? 'Calling the model for all sections in parallel — ~15–30s for Claude, can take a few minutes on a local model' : '"Questions to generate" and "Material use" apply to Generate New Exam only — Take Practice Exam always uses the current bank as-is. Adaptive mode: weaker sections get more new questions (min ~4 per section).'}</span>
+      <span class="examctl-hint mono">${state.generating ? 'Calling the model for all sections in parallel — ~15–30s for Claude, can take a few minutes on a local model' : '"Questions to generate", "Difficulty", and "Material use" apply to Generate New Exam only — Take Practice Exam always uses the current bank as-is. Adaptive mode: weaker sections get more new questions (min ~4 per section).'}</span>
     </div>
 
     ${renderDashboardSummary()}

@@ -92,8 +92,9 @@ app.post('/api/login', (req, res) => {
 
 app.post('/api/generate-exam', requireAccessCode, requireEmail, async (req, res) => {
   try {
-    const { materialMode, focusSection, totalQuestions } = req.body || {};
+    const { materialMode, focusSection, totalQuestions, difficulty } = req.body || {};
     const validMode = materialMode === 'material-only' ? 'material-only' : 'blend';
+    const validDifficulty = ['easy', 'medium', 'hard'].includes(difficulty) ? difficulty : 'medium';
     let section = null;
     if (focusSection !== null && focusSection !== undefined && focusSection !== '') {
       const n = Number(focusSection);
@@ -105,7 +106,12 @@ app.post('/api/generate-exam', requireAccessCode, requireEmail, async (req, res)
       if (Number.isInteger(n)) count = Math.max(MIN_TOTAL_QUESTIONS, Math.min(MAX_TOTAL_QUESTIONS, n));
     }
 
-    const questions = await generateExam(req.userKey, { materialMode: validMode, focusSection: section, totalQuestions: count });
+    const questions = await generateExam(req.userKey, {
+      materialMode: validMode,
+      focusSection: section,
+      totalQuestions: count,
+      difficulty: validDifficulty
+    });
     res.json({ questions });
   } catch (err) {
     console.error('[POST /api/generate-exam] failed:', err);

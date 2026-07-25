@@ -49,6 +49,13 @@
     display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px;
     border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:10px 14px;
   }
+  /* Dashboard variant: options (section/count/difficulty/material) and the
+     action buttons are two visually distinct groups — stacking them as
+     separate rows keeps each free to wrap on its own instead of competing
+     for space in one flat row, which was pushing the buttons onto an
+     unpredictable line of their own. */
+  .examctl-dashboard{flex-direction:column;align-items:stretch;padding:14px;}
+  .examctl-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
   .btn.genbtn{border-color:var(--amber-dim);background:#1a1408;color:var(--amber);}
   .btn.genbtn:hover:not(:disabled){border-color:var(--amber);background:#241a0a;}
   .btn.genbtn:disabled{opacity:0.7;cursor:progress;}
@@ -870,7 +877,7 @@ function renderExamOptions(){
           ${SECTIONS.map((name,i)=>`<option value="${i}" ${activeFocusSection===i?'selected':''}>${name} only</option>`).join('')}
         </select>
       </label>
-      <label class="opt-label mono">Questions to generate
+      <label class="opt-label mono"># Questions
         <input id="totalQuestionsInput" class="opt-select mono" type="number" min="5" max="150" step="5" value="${lastTotalQuestions}" style="width:80px;" />
       </label>
       <label class="opt-label mono">Difficulty
@@ -956,13 +963,15 @@ function renderDashboard(){
       </div>
     </div>
 
-    <div class="examctl">
+    <div class="examctl examctl-dashboard">
       ${renderExamOptions()}
-      <button class="btn primary" onclick="startExam(readFocusSection())">↻ Take Practice Exam</button>
-      <button class="btn genbtn" onclick="generateNewExam(readFocusSection(), readMaterialMode(), readTotalQuestions(), readDifficulty())" ${state.generating?'disabled':''}>
-        ${state.generating ? '<span class="spin">&#9696;</span> Generating…' : '&#9889; Generate New Exam'}
-      </button>
-      <span class="examctl-hint mono">${state.generating ? 'Calling the model for all sections in parallel — ~15–30s for Claude, can take a few minutes on a local model' : '"Questions to generate", "Difficulty", and "Material use" apply to Generate New Exam only — Take Practice Exam always uses the current bank as-is. Adaptive mode: weaker sections get more new questions (min ~4 per section).'}</span>
+      <div class="examctl-actions">
+        <button class="btn primary" onclick="startExam(readFocusSection())">↻ Take Practice Exam</button>
+        <button class="btn genbtn" onclick="generateNewExam(readFocusSection(), readMaterialMode(), readTotalQuestions(), readDifficulty())" ${state.generating?'disabled':''}>
+          ${state.generating ? '<span class="spin">&#9696;</span> Generating…' : '&#9889; Generate New Exam'}
+        </button>
+        <span class="examctl-hint mono">${state.generating ? 'Calling the model for all sections in parallel — ~15–30s for Claude, can take a few minutes on a local model' : '"# Questions", "Difficulty", and "Material use" apply to Generate New Exam only — Take Practice Exam always uses the current bank as-is. Adaptive mode: weaker sections get more new questions (min ~4 per section).'}</span>
+      </div>
     </div>
 
     ${renderDashboardSummary()}

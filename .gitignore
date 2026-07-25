@@ -5,3 +5,4 @@ node_modules/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 data/history/
+data/materials.json

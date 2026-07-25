@@ -2,12 +2,20 @@ require('dotenv').config();
 
 const path = require('path');
 const express = require('express');
+const multer = require('multer');
+const { PDFParse } = require('pdf-parse');
 const Anthropic = require('@anthropic-ai/sdk');
 
-const { generateExam } = require('./lib/generateExam');
-const { readHistory, recordResults } = require('./lib/history');
+const {
+  generateExam,
+  DEFAULT_TOTAL_QUESTIONS,
+  MIN_TOTAL_QUESTIONS,
+  MAX_TOTAL_QUESTIONS
+} = require('./lib/generateExam');
+const { readHistory, recordResults, SECTION_NAMES } = require('./lib/history');
 const { getProvider } = require('./lib/providers');
 const { getStore } = require('./lib/historyStore');
+const { listMaterials, addMaterial, deleteMaterial } = require('./lib/materials');
 
 const PROVIDER_NAME = (process.env.LLM_PROVIDER || 'anthropic').toLowerCase();
 
@@ -32,6 +40,11 @@ if (PROVIDER_NAME === 'openai' && !process.env.OPENAI_API_KEY) {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 } // 15MB — text is extracted then the buffer is discarded
+});
 
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -79,7 +92,20 @@ app.post('/api/login', (req, res) => {
 
 app.post('/api/generate-exam', requireAccessCode, requireEmail, async (req, res) => {
   try {
-    const questions = await generateExam(req.userKey);
+    const { materialMode, focusSection, totalQuestions } = req.body || {};
+    const validMode = materialMode === 'material-only' ? 'material-only' : 'blend';
+    let section = null;
+    if (focusSection !== null && focusSection !== undefined && focusSection !== '') {
+      const n = Number(focusSection);
+      if (Number.isInteger(n) && n >= 0 && n < SECTION_NAMES.length) section = n;
+    }
+    let count = DEFAULT_TOTAL_QUESTIONS;
+    if (totalQuestions !== null && totalQuestions !== undefined && totalQuestions !== '') {
+      const n = Number(totalQuestions);
+      if (Number.isInteger(n)) count = Math.max(MIN_TOTAL_QUESTIONS, Math.min(MAX_TOTAL_QUESTIONS, n));
+    }
+
+    const questions = await generateExam(req.userKey, { materialMode: validMode, focusSection: section, totalQuestions: count });
     res.json({ questions });
   } catch (err) {
     console.error('[POST /api/generate-exam] failed:', err);
@@ -146,6 +172,73 @@ app.get('/api/history', requireAccessCode, requireEmail, async (req, res) => {
     console.error('[GET /api/history] failed:', err);
     res.status(500).json({ error: 'history_read_failed', message: err.message });
   }
+});
+
+// Materials are a shared library (not per-user, unlike history/generation) —
+// anyone behind the access code can upload, see, or delete any of them.
+app.post('/api/materials', requireAccessCode, upload.single('file'), async (req, res) => {
+  try {
+    const section = Number(req.body.section);
+    if (!Number.isInteger(section) || section < 0 || section >= SECTION_NAMES.length) {
+      return res.status(400).json({ error: 'invalid_section', message: 'A valid section is required.' });
+    }
+
+    let text = (req.body.text || '').toString();
+    let title = (req.body.title || '').toString().trim();
+
+    if (req.file) {
+      const isPdf = req.file.mimetype === 'application/pdf' || /\.pdf$/i.test(req.file.originalname || '');
+      if (!isPdf) {
+        return res.status(400).json({
+          error: 'invalid_file',
+          message: 'Only PDF file uploads are supported — paste text directly for other formats.'
+        });
+      }
+      const parser = new PDFParse({ data: req.file.buffer });
+      const result = await parser.getText();
+      text = result.text || '';
+      if (!title) title = (req.file.originalname || '').replace(/\.pdf$/i, '');
+    }
+
+    const uploadedBy = (req.headers['x-user-email'] || '').toString().trim().toLowerCase() || null;
+    const material = await addMaterial({ section, title, text, uploadedBy });
+    res.json({ ok: true, material });
+  } catch (err) {
+    console.error('[POST /api/materials] failed:', err);
+    res.status(400).json({ error: 'material_upload_failed', message: err.message || 'Failed to add material.' });
+  }
+});
+
+app.get('/api/materials', requireAccessCode, async (req, res) => {
+  try {
+    res.json({ materials: await listMaterials() });
+  } catch (err) {
+    console.error('[GET /api/materials] failed:', err);
+    res.status(500).json({ error: 'materials_read_failed', message: err.message });
+  }
+});
+
+app.delete('/api/materials/:id', requireAccessCode, async (req, res) => {
+  try {
+    await deleteMaterial(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[DELETE /api/materials] failed:', err);
+    res.status(404).json({ error: 'material_not_found', message: err.message || 'Material not found.' });
+  }
+});
+
+// Catches errors thrown before a route's own try/catch can run — notably
+// multer's file-size-limit error, which fires during upload parsing, before
+// the /api/materials handler body executes. Without this, such errors would
+// fall through to Express's default HTML error page, which breaks every
+// frontend fetch() call expecting JSON.
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({ error: 'upload_error', message: err.message });
+  }
+  console.error('[unhandled error]', err);
+  res.status(500).json({ error: 'server_error', message: err.message || 'Unexpected server error.' });
 });
 
 app.listen(PORT, () => {

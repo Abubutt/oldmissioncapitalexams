@@ -3,10 +3,11 @@
 A full-stack practice exam app for the Old Mission Capital Jr. SWE screening
 (C++, Python, Data Structures & Algorithms, Operating Systems, Linux/CLI, Networking),
 runnable locally or deployed for free. Ships with a built-in 50-question bank, and
-can generate brand-new, adaptive 50-question exams on demand using an LLM (Claude,
-OpenAI, or a local Ollama model) — weaker sections get more new questions. A
-shared access code gates generation on any public deploy so a live link can't
-silently spend your API key on strangers.
+can generate brand-new, adaptive exams (any size, default 50) on demand using an
+LLM (Claude, OpenAI, or a local Ollama model) — weaker sections get more new
+questions, optionally grounded in your own uploaded study material, optionally
+focused on a single section. A shared access code gates generation on any public
+deploy so a live link can't silently spend your API key on strangers.
 
 ## Architecture
 
@@ -148,18 +149,100 @@ loss changes cut the actual bill:
 1. On "Generate New Exam," the backend reads the current user's history and
    computes their accuracy per section (sections with no history default to a
    neutral 50%).
-2. It allocates 50 questions across the 6 sections: every section gets a floor of
-   4 questions (the real exam is broad, not narrow), and the remaining ~26 are
-   distributed proportionally to `1 - accuracy` — weaker sections get more.
-3. It fires 6 parallel calls to Claude (one per section), each with a system
-   prompt describing the section, style, and difficulty, plus a sample of up to
-   40 recently-seen question texts for that section to avoid near-duplicates.
+2. It allocates the requested number of questions (default 50, see "Choosing
+   how many questions" below) across the 6 sections: every section gets a
+   floor of up to 4 questions (scaled down automatically if the total is too
+   small to support that — e.g. a 6-question exam floors at 1/section instead
+   of 4), and the remainder is distributed proportionally to `1 - accuracy` —
+   weaker sections get more. If you picked a specific section in the
+   dashboard's "Section" dropdown instead of "All Sections," this step is
+   skipped and every question goes to that one section — see "Section-focused
+   exams" below.
+3. It fires one call per section in the allocation (in parallel), each with a
+   system prompt describing the section, style, and difficulty, plus a sample
+   of up to 15 recently-seen question texts for that section to avoid
+   near-duplicates. If study material exists for that section (see below),
+   the prompt also includes a bounded excerpt from it and an instruction to
+   ground some or all questions in it.
 4. Each response is parsed as JSON and schema-validated
    (`{q, code, opts[4], a}`); a malformed response is retried once with a
    stricter instruction before failing.
-5. All 6 sections' questions are merged, shuffled, and returned as one 50-question
-   exam. The frontend swaps it in for `QUESTIONS`, resets the timer and answers,
-   and reuses all existing exam-taking/scoring/review UI.
+5. All sections' questions are merged, shuffled, and returned as one exam.
+   The frontend swaps it in for `QUESTIONS`, resets the timer and answers,
+   and reuses all existing exam-taking/scoring/review UI (which already sizes
+   itself off `QUESTIONS.length` rather than assuming 50, so this needed no
+   separate UI work).
+
+### Choosing how many questions
+
+The dashboard's "Questions to generate" field controls the size of the next
+**Generate New Exam** call — defaults to 50, accepts 5-150. It has no effect
+on **Take Practice Exam**, which always uses whatever bank (default or
+last-generated) is currently loaded, unfiltered by count — that button's
+hint text says so explicitly to avoid the field looking like it applies
+everywhere. Validated both client-side (the number input's `min`/`max`) and
+server-side (clamped again in `server.js`, since client-side bounds are only
+a UX nicety, never trusted alone).
+
+### Section-focused exams
+
+The dashboard's "Section" dropdown defaults to "All Sections (Adaptive)" but
+can be locked to any one section — for "just quiz me on Python" instead of
+the usual 6-way spread. Applies to both buttons:
+
+- **Take Practice Exam** filters whatever bank is currently loaded (the
+  default question set, or the last AI-generated exam) down to that section
+  client-side — no API call, works offline from the static bank.
+- **Generate New Exam** sends `focusSection` to the backend, which allocates
+  every requested question to that section instead of spreading them
+  adaptively.
+
+The chosen section is sticky: retaking an exam (`↻ Retake Exam` on the
+results screen) reuses whatever focus was active for the exam you just took,
+not whatever the dropdown currently shows.
+
+## Study materials (RAG-lite grounding)
+
+You can feed the generator real source material — a PDF or pasted text — so
+generated questions test *that specific content* instead of (or alongside)
+general knowledge. Manage it from the "Study Materials" card on the
+dashboard: upload a PDF or paste text, assign it to one of the 6 sections,
+give it an optional title.
+
+**Shared, not per-user.** Unlike practice history, materials are one shared
+library — anyone behind the access code can upload, use, or delete any of
+them. Upload a chapter once; it's available to everyone using the deployment,
+immediately, no re-uploading per person.
+
+**How it's used in generation** — for any section that has at least one
+material attached:
+1. All materials for that section are split into ~2500-character chunks on
+   paragraph boundaries (`lib/materials.js`'s `chunkText`).
+2. A **bounded random sample** (3 chunks, regardless of how much total
+   material exists for that section) is picked and dropped into that
+   section's generation prompt. This keeps the token cost of a section with
+   material flat whether you've uploaded one page or a whole textbook —
+   consistent with the token-efficiency work elsewhere in this app — and
+   means repeated generations tend to cover different parts of a large
+   document over time rather than always the same opening chunk.
+3. The dashboard's "Material use" dropdown (only shown once at least one
+   material exists) controls how strictly: **Blend** asks for roughly half
+   the section's questions grounded in the excerpt and half general
+   knowledge; **Material only** asks for every question in that section to
+   come from the excerpt, covering it as thoroughly as the content allows
+   rather than padding with unrelated questions if it's thin. This is chosen
+   per generation, not fixed per material.
+
+Sections with no material attached are completely unaffected — same
+general-knowledge generation as before this feature existed.
+
+**PDF extraction** uses `pdf-parse` (text only — no OCR, so a scanned image
+PDF with no text layer will extract as empty). Non-PDF files aren't
+accepted; paste the text instead. Uploads are capped at 15MB (checked before
+parsing) and extracted text is capped at 150,000 characters per material
+(~35-40k tokens) — long past what a single exam's grounding needs, and
+enough headroom that hitting it is a signal you're uploading more than one
+exam's worth of material anyway.
 
 ## Access & identity
 
@@ -316,5 +399,7 @@ lib/history.js               Per-user history logic (accuracy, recent questions,
 lib/historyStore/index.js    Picks file.js or redis.js based on UPSTASH_REDIS_REST_* env vars
 lib/historyStore/file.js        Local disk, one JSON file per user under data/history/
 lib/historyStore/redis.js       Upstash Redis, one key per user
-public/index.html            Frontend: access gate, exam UI, timer, scoring, review, history panel
+lib/materials.js             Shared study-material CRUD, chunking, random excerpt selection
+lib/materialsStore/index.js  Same file-vs-redis pattern as historyStore, but one shared key/file
+public/index.html            Frontend: access gate, dashboard, exam UI, timer, scoring, review
 ```

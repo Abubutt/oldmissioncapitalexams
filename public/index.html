@@ -185,14 +185,28 @@
   .run-date{font-size:11.5px;color:var(--text-dim);margin-top:4px;}
   .run-arrow{color:var(--text-dim);font-size:16px;}
 
-  /* ===== Exam options (focus section / material mode) ===== */
-  .exam-opts{display:flex;gap:14px;flex-wrap:wrap;margin-right:4px;}
+  /* ===== Exam options (sections / count / difficulty / material mode) ===== */
+  .exam-opts{display:flex;flex-direction:column;gap:12px;margin-right:4px;}
+  .exam-opts-row{display:flex;gap:14px;flex-wrap:wrap;}
   .opt-label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-dim);letter-spacing:0.3px;}
   .opt-select{
     font-family:'IBM Plex Mono',monospace;font-size:12.5px;padding:8px 10px;
     background:var(--panel-2);border:1px solid var(--line);border-radius:6px;color:var(--text);
   }
   .opt-select:focus{outline:none;border-color:var(--amber-dim);}
+
+  .section-picker{display:flex;flex-direction:column;gap:8px;}
+  .opt-label-row{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:var(--text-dim);letter-spacing:0.3px;}
+  .section-picker-links a{color:var(--amber-dim);cursor:pointer;text-decoration:underline;}
+  .section-picker-links a:hover{color:var(--amber);}
+  .section-checkboxes{display:flex;flex-wrap:wrap;gap:8px;}
+  .section-check{
+    display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer;
+    padding:6px 10px;border:1px solid var(--line);border-radius:5px;background:var(--panel-2);
+    transition:border-color .15s;
+  }
+  .section-check:hover{border-color:var(--amber-dim);}
+  .section-check input{accent-color:var(--amber);cursor:pointer;}
 
   /* ===== Study materials ===== */
   .materials-card{margin-bottom:20px;}
@@ -235,7 +249,10 @@
 <div id="root"></div>
 
 <script>
-const SECTIONS = ["C++","Python","Data Structures & Algorithms","Operating Systems","Linux / CLI","Networking & General CS"];
+// Order is load-bearing (matches lib/history.js SECTION_NAMES) — index is
+// the `s` field on every question. New sections must be appended, never
+// inserted, or every already-stored question's section would silently shift.
+const SECTIONS = ["C++","Python","Data Structures & Algorithms","Operating Systems","Linux / CLI","Networking & General CS","Discrete Math"];
 
 const DEFAULT_QUESTIONS = [
 // ---- C++ (1-10)
@@ -293,12 +310,33 @@ const DEFAULT_QUESTIONS = [
 {s:4, q:"What does `chmod +x script.sh` do?", opts:["Deletes the script","Makes the file executable","Makes the file read-only","Changes the file's owner"], a:1},
 {s:4, q:"What is the difference between > and >> in bash redirection?", opts:["No difference","> overwrites the file; >> appends to it","> appends; >> overwrites","> is for input, >> is for output"], a:1},
 {s:4, q:"What does the command `ps aux | grep python` typically do?", opts:["Installs Python","Lists all running processes and filters for ones related to \"python\"","Kills all Python processes","Shows Python version information"], a:1},
+{s:4, q:"What is the key difference between fork() and vfork() in Unix/Linux?", opts:["fork() shares memory with the child; vfork() does not","vfork() shares the parent's address space with the child until exec() or exit(), while fork() gives the child its own (copy-on-write) address space","vfork() creates a thread, not a process","There is no functional difference, only performance"], a:1},
+{s:4, q:"What happens to the parent process's execution immediately after calling vfork()?", opts:["The parent is suspended until the child calls exec() or exits","The parent continues running immediately in parallel with the child","The parent process terminates","The parent and child run in lockstep, alternating instructions"], a:0},
+{s:4, q:"What is a key characteristic of the Linux clone() system call compared to fork()?", opts:["clone() lets the caller specify exactly which resources (memory, file descriptors, signal handlers) are shared with the child via flags","clone() always creates a fully independent process with no shared resources","clone() is only used for creating zombie processes","clone() replaces the process image immediately, like exec()"], a:0},
 
 // ---- Networking/General (47-50)
 {s:5, q:"What is the primary difference between TCP and UDP?", opts:["TCP is connectionless; UDP is connection-oriented","TCP guarantees reliable, ordered delivery; UDP is faster but unreliable/unordered","They are functionally identical","UDP is always slower than TCP"], a:1},
 {s:5, q:"What HTTP status code indicates a successful request?", opts:["404","500","200","301"], a:2},
 {s:5, q:"What is the purpose of DNS?", opts:["To encrypt network traffic","To translate human-readable domain names into IP addresses","To compress data for transmission","To manage firewall rules"], a:1},
 {s:5, q:"In a client-server model, what does \"latency\" refer to?", opts:["The total amount of data transferred","The time delay between a request being sent and a response being received","The number of concurrent connections","The bandwidth of the connection"], a:1},
+
+// ---- Discrete Math (51-64) — combinatorics & permutations, per a firsthand
+// account of the actual screening (reported ~80% of the real exam; not
+// proof-based, just counting problems)
+{s:6, q:"How many distinct ways can you arrange all 5 letters of the word 'MATHS' (all letters distinct)?", opts:["25","60","120","100"], a:2},
+{s:6, q:"In how many ways can you choose a committee of 3 people from a group of 8, where order doesn't matter?", opts:["336","56","24","512"], a:1},
+{s:6, q:"What is the key difference between a permutation and a combination?", opts:["Permutations count arrangements where order matters; combinations don't care about order","Permutations allow repetition; combinations don't","Combinations count order; permutations don't","There is no meaningful difference"], a:0},
+{s:6, q:"How many different 3-digit codes can be formed using digits 0-9 if repetition is allowed?", opts:["720","1000","100","300"], a:1},
+{s:6, q:"In how many ways can 4 people be seated around a circular table, if rotations are considered identical?", opts:["24","4","6","12"], a:2},
+{s:6, q:"What is the value of C(6,2) (\"6 choose 2\")?", opts:["30","12","15","21"], a:2},
+{s:6, q:"A coin is flipped 5 times. How many distinct sequences of heads/tails are possible?", opts:["10","25","32","120"], a:2},
+{s:6, q:"You have 10 distinct books but shelf space for only 4. How many ways can you select and arrange 4 of them in order on the shelf?", opts:["210","10000","24","5040"], a:3},
+{s:6, q:"The Pigeonhole Principle states that if you place n+1 items into n containers, then:", opts:["every container holds exactly one item","at least one container must hold more than one item","some containers must be empty","the items must be identical"], a:1},
+{s:6, q:"Which of the following correctly expresses the symmetry identity for binomial coefficients?", opts:["C(n, r) = C(n, r-1)","C(n, r) = C(n-1, r)","C(n, r) = C(n, n-r)","C(n, r) = C(r, n)"], a:2},
+{s:6, q:"How many distinct ways can you arrange the letters of the word 'LEVEL' (L appears twice, E appears twice)?", opts:["120","60","30","20"], a:2},
+{s:6, q:"Which expression correctly gives the number of distinct 5-card hands from a standard 52-card deck (order doesn't matter)?", opts:["P(52,5)","C(52,5)","52^5","5^52"], a:1},
+{s:6, q:"A restaurant offers 3 appetizers, 4 main courses, and 2 desserts. How many distinct 3-course meals (one from each category) are possible?", opts:["9","12","48","24"], a:3},
+{s:6, q:"How many ways can you split 6 distinct people into two unordered groups of 3?", opts:["20","10","40","15"], a:1},
 ];
 
 let FULL_QUESTIONS = DEFAULT_QUESTIONS; // the whole current bank (default or last AI-generated set)
@@ -413,18 +451,18 @@ async function submitExam(){
   render();
 }
 
-let activeFocusSection = null; // null = all sections; sticky across retakes until explicitly changed
+let activeFocusSections = null; // null = all sections; array of indices = subset; sticky across retakes until explicitly changed
 let lastMaterialMode = 'blend';
 let lastTotalQuestions = 50;
 let lastDifficulty = 'medium';
 
-function startExam(focusSection){
-  const section = focusSection !== undefined ? focusSection : activeFocusSection;
-  activeFocusSection = section;
+function startExam(focusSections){
+  const sections = focusSections !== undefined ? focusSections : activeFocusSections;
+  activeFocusSections = sections;
 
-  const pool = (section === null || section === undefined) ? FULL_QUESTIONS : FULL_QUESTIONS.filter(q => q.s === section);
+  const pool = (sections === null || sections.length === 0) ? FULL_QUESTIONS : FULL_QUESTIONS.filter(q => sections.includes(q.s));
   if(!pool.length){
-    alert('No questions available for that section in the current bank.');
+    alert('No questions available for the selected sections in the current bank.');
     return;
   }
   QUESTIONS = pool;
@@ -437,13 +475,13 @@ function startExam(focusSection){
   render();
 }
 
-async function generateNewExam(focusSection, materialMode, totalQuestions, difficulty){
+async function generateNewExam(focusSections, materialMode, totalQuestions, difficulty){
   if(state.generating) return;
-  const section = focusSection !== undefined ? focusSection : activeFocusSection;
+  const sections = focusSections !== undefined ? focusSections : activeFocusSections;
   const mode = materialMode !== undefined ? materialMode : lastMaterialMode;
   const count = totalQuestions !== undefined && totalQuestions !== null && !isNaN(totalQuestions) ? totalQuestions : lastTotalQuestions;
   const level = difficulty !== undefined ? difficulty : lastDifficulty;
-  activeFocusSection = section;
+  activeFocusSections = sections;
   lastMaterialMode = mode;
   lastTotalQuestions = count;
   lastDifficulty = level;
@@ -455,7 +493,7 @@ async function generateNewExam(focusSection, materialMode, totalQuestions, diffi
     const res = await fetch('/api/generate-exam', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', ...authHeaders()},
-      body: JSON.stringify({ focusSection: section, materialMode: mode, totalQuestions: count, difficulty: level })
+      body: JSON.stringify({ focusSections: sections, materialMode: mode, totalQuestions: count, difficulty: level })
     });
 
     if(res.status === 401){
@@ -610,7 +648,7 @@ function renderExamCtl(){
       <button class="btn genbtn" onclick="generateNewExam()" ${state.generating?'disabled':''}>
         ${state.generating ? '<span class="spin">&#9696;</span> Generating…' : '&#9889; Generate New Exam'}
       </button>
-      <span class="examctl-hint mono">${state.generating ? 'Calling the model for all 6 sections in parallel — ~15–30s for Claude, can take a few minutes on a local model' : 'Adaptive: weaker sections get more new questions (min 4 per section)'}</span>
+      <span class="examctl-hint mono">${state.generating ? 'Calling the model for all sections in parallel — ~15–30s for Claude, can take a few minutes on a local model' : 'Adaptive: weaker and more heavily-weighted sections get more new questions'}</span>
     </div>
   `;
 }
@@ -682,7 +720,7 @@ function renderExam(){
 
       <div class="progress-wrap">
         <div class="progress-label">
-          <span>ANSWERED: ${answeredCount} / ${QUESTIONS.length}${activeFocusSection!==null ? ` · FOCUSED: ${SECTIONS[activeFocusSection].toUpperCase()}` : ''}</span>
+          <span>ANSWERED: ${answeredCount} / ${QUESTIONS.length}${activeFocusSections!==null && activeFocusSections.length>0 && activeFocusSections.length<SECTIONS.length ? ` · FOCUSED: ${activeFocusSections.map(i=>SECTIONS[i].toUpperCase()).join(', ')}` : ''}</span>
           <span>${pct}%</span>
         </div>
         <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
@@ -845,10 +883,15 @@ function renderRunList(){
   }).join('')}</div>`;
 }
 
-function readFocusSection(){
-  const el = document.getElementById('focusSectionSelect');
-  if(!el || el.value === '') return null;
-  return Number(el.value);
+function readFocusSections(){
+  const boxes = Array.from(document.querySelectorAll('.focusSectionCheckbox'));
+  if(!boxes.length) return activeFocusSections;
+  const checked = boxes.filter(b => b.checked).map(b => Number(b.value));
+  if(checked.length === 0){
+    alert('Select at least one section.');
+    return activeFocusSections === null ? SECTIONS.map((_,i)=>i) : activeFocusSections;
+  }
+  return checked.length === SECTIONS.length ? null : checked;
 }
 
 function readMaterialMode(){
@@ -868,33 +911,49 @@ function readDifficulty(){
   return el ? el.value : lastDifficulty;
 }
 
+function setAllSectionCheckboxes(checked){
+  document.querySelectorAll('.focusSectionCheckbox').forEach(b => { b.checked = checked; });
+}
+
 function renderExamOptions(){
   return `
     <div class="exam-opts">
-      <label class="opt-label mono">Section
-        <select id="focusSectionSelect" class="opt-select mono">
-          <option value="" ${activeFocusSection===null?'selected':''}>All Sections (Adaptive)</option>
-          ${SECTIONS.map((name,i)=>`<option value="${i}" ${activeFocusSection===i?'selected':''}>${name} only</option>`).join('')}
-        </select>
-      </label>
-      <label class="opt-label mono"># Questions
-        <input id="totalQuestionsInput" class="opt-select mono" type="number" min="5" max="150" step="5" value="${lastTotalQuestions}" style="width:80px;" />
-      </label>
-      <label class="opt-label mono">Difficulty
-        <select id="difficultySelect" class="opt-select mono">
-          <option value="easy" ${lastDifficulty==='easy'?'selected':''}>Easy</option>
-          <option value="medium" ${lastDifficulty==='medium'?'selected':''}>Medium</option>
-          <option value="hard" ${lastDifficulty==='hard'?'selected':''}>Hard</option>
-        </select>
-      </label>
-      ${materialsCache.length ? `
-      <label class="opt-label mono">Material use
-        <select id="materialModeSelect" class="opt-select mono">
-          <option value="blend" ${lastMaterialMode==='blend'?'selected':''}>Blend with general questions</option>
-          <option value="material-only" ${lastMaterialMode==='material-only'?'selected':''}>From uploaded material only</option>
-        </select>
-      </label>
-      ` : ''}
+      <div class="section-picker">
+        <div class="opt-label-row mono">
+          <span>Sections</span>
+          <span class="section-picker-links">
+            <a onclick="setAllSectionCheckboxes(true)">all</a> / <a onclick="setAllSectionCheckboxes(false)">none</a>
+          </span>
+        </div>
+        <div class="section-checkboxes">
+          ${SECTIONS.map((name,i)=>`
+            <label class="section-check">
+              <input type="checkbox" class="focusSectionCheckbox" value="${i}" ${activeFocusSections===null || activeFocusSections.includes(i) ? 'checked' : ''} />
+              ${name}
+            </label>
+          `).join('')}
+        </div>
+      </div>
+      <div class="exam-opts-row">
+        <label class="opt-label mono"># Questions
+          <input id="totalQuestionsInput" class="opt-select mono" type="number" min="5" max="150" step="5" value="${lastTotalQuestions}" style="width:80px;" />
+        </label>
+        <label class="opt-label mono">Difficulty
+          <select id="difficultySelect" class="opt-select mono">
+            <option value="easy" ${lastDifficulty==='easy'?'selected':''}>Easy</option>
+            <option value="medium" ${lastDifficulty==='medium'?'selected':''}>Medium</option>
+            <option value="hard" ${lastDifficulty==='hard'?'selected':''}>Hard</option>
+          </select>
+        </label>
+        ${materialsCache.length ? `
+        <label class="opt-label mono">Material use
+          <select id="materialModeSelect" class="opt-select mono">
+            <option value="blend" ${lastMaterialMode==='blend'?'selected':''}>Blend with general questions</option>
+            <option value="material-only" ${lastMaterialMode==='material-only'?'selected':''}>From uploaded material only</option>
+          </select>
+        </label>
+        ` : ''}
+      </div>
     </div>
   `;
 }
@@ -966,8 +1025,8 @@ function renderDashboard(){
     <div class="examctl examctl-dashboard">
       ${renderExamOptions()}
       <div class="examctl-actions">
-        <button class="btn primary" onclick="startExam(readFocusSection())">↻ Take Practice Exam</button>
-        <button class="btn genbtn" onclick="generateNewExam(readFocusSection(), readMaterialMode(), readTotalQuestions(), readDifficulty())" ${state.generating?'disabled':''}>
+        <button class="btn primary" onclick="startExam(readFocusSections())">↻ Take Practice Exam</button>
+        <button class="btn genbtn" onclick="generateNewExam(readFocusSections(), readMaterialMode(), readTotalQuestions(), readDifficulty())" ${state.generating?'disabled':''}>
           ${state.generating ? '<span class="spin">&#9696;</span> Generating…' : '&#9889; Generate New Exam'}
         </button>
         <span class="examctl-hint mono">${state.generating ? 'Calling the model for all sections in parallel — ~15–30s for Claude, can take a few minutes on a local model' : '"# Questions", "Difficulty", and "Material use" apply to Generate New Exam only — Take Practice Exam always uses the current bank as-is. Adaptive mode: weaker sections get more new questions (min ~4 per section).'}</span>

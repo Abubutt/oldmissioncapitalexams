@@ -1,21 +1,23 @@
 # Old Mission Capital — Adaptive Practice Exam
 
 A full-stack practice exam app for the Old Mission Capital Jr. SWE screening
-(C++, Python, Data Structures & Algorithms, Operating Systems, Linux/CLI, Networking),
-runnable locally or deployed for free. Ships with a built-in 50-question bank, and
-can generate brand-new, adaptive exams (any size, default 50) on demand using an
-LLM (Claude, OpenAI, or a local Ollama model) — weaker sections get more new
-questions, optionally grounded in your own uploaded study material, optionally
-focused on a single section. A shared access code gates generation on any public
-deploy so a live link can't silently spend your API key on strangers.
+(C++, Python, Data Structures & Algorithms, Operating Systems, Linux/CLI,
+Networking, and Discrete Math), runnable locally or deployed for free. Ships
+with a built-in question bank, and can generate brand-new, adaptive exams (any
+size, default 50) on demand using an LLM (Claude, OpenAI, or a local Ollama
+model) — weaker and more heavily-weighted sections get more new questions,
+optionally grounded in your own uploaded study material, optionally confined
+to whichever sections you pick. A shared access code gates generation on any
+public deploy so a live link can't silently spend your API key on strangers.
 
 ## Architecture
 
 - **Backend:** Node.js + Express (`server.js`), serving `public/` as static files.
 - **`POST /api/generate-exam`:** reads the requesting user's history, allocates 50
-  questions across the 6 sections (weaker sections get more, every section gets a
-  minimum of 4), and calls the configured LLM provider once per section **in
-  parallel** to write new multiple-choice questions, avoiding that user's recent
+  questions across the active sections (weaker and more heavily-weighted sections
+  get more, every active section gets a minimum of 4), and calls the configured
+  LLM provider once per section **in parallel** to write new multiple-choice
+  questions, avoiding that user's recent
   duplicates. Responses are validated as JSON server-side and retried once on a
   parse/schema failure.
 - **`POST /api/record-results`:** called by the frontend on submit; updates the
@@ -94,55 +96,85 @@ model (e.g. `qwen2.5:14b` at 32k) can raise it.
 ```
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o        # set to whatever your key actually has access to
+OPENAI_MODEL=o4-mini       # set to whatever your key actually has access to
 ```
 
-Defaults to `gpt-4o` if `OPENAI_MODEL` is unset — that's a safe known-good
-default, not necessarily the newest model on your account, since model access
-depends on your OpenAI billing tier and isn't something this app can detect in
-advance. If the default (or whatever you set) isn't available to your key,
-`POST /api/generate-exam` returns a clear `openai_model_not_found` error
-telling you to change `OPENAI_MODEL` and restart — same pattern as the
-Anthropic path. `openai_auth_failed` means the key itself is wrong.
+Defaults to `o4-mini` if `OPENAI_MODEL` is unset — a **reasoning model**,
+switched to from `gpt-4o` (2026-07) after Discrete Math became the
+largest section by weight (see below) and a live comparison showed it's
+meaningfully more reliable at combinatorics specifically. If the default (or
+whatever you set) isn't available to your key, `POST /api/generate-exam`
+returns a clear `openai_model_not_found` error telling you to change
+`OPENAI_MODEL` and restart — same pattern as the Anthropic path.
+`openai_auth_failed` means the key itself is wrong.
 
-Verified against a live key on `gpt-4o`: a full 50-question exam generated in
-~10s (all schema-valid, correctly distributed across sections), and a manual
-spot-check of 18 questions across all 6 sections — including two code-trace
-questions (a Python list-mutation function, a nested-if JS snippet) — found
-zero incorrect answer keys, a clear step up from the Ollama/`llama3:8b` sample
-(1 flatly wrong, 2–3 debatable out of 9). Still worth a periodic skim rather
-than blind trust, especially on anything language-lawyer-y, but this is the
-provider to use when it matters. Uses OpenAI's JSON mode
-(`response_format: {type: "json_object"}`) plus the same object-wrapper
-schema and validate-then-retry-once logic as the other two providers.
+**Why o4-mini, verified not assumed.** Ran matched discrete-math batches
+through `gpt-4o` and `o4-mini` with identical prompts. `gpt-4o` got 7/8
+correct — it mismarked the permutation count for "MISS" (a word with a
+repeated letter) as 24 instead of the correct 12, forgetting to divide by the
+repeat. `o4-mini` got 8/8, including two genuinely harder problems solved
+correctly: a two-step license-plate count (11,232,000, computed exactly) and
+a generalized pigeonhole problem. A follow-up full-exam-scale test (17
+discrete math questions in one run) found 16/17 correct — the one issue was
+a real, subtle one: "split 12 students into three groups of 4" was answered
+as 34,650, the count if the three groups are labeled/ordered, when the more
+natural reading (unlabeled groups) requires dividing by 3! for the
+symmetric partitions, giving 5,775. Also tried `gpt-5` (the newer flagship on
+this account) and it failed outright at this task — with an 8000-token
+budget it spent the *entire* budget on hidden reasoning and returned no
+visible output at all, a real failure mode of reasoning models worth knowing
+about, not a one-off.
 
-**Token/cost efficiency.** The server logs real per-call usage and running
-session cost to the console (`[openai] 338 in + 407 out = 745 tokens
-(~$0.0049, session total ~$0.0249)`) — no separate dashboard needed to see
-what a click of "Generate New Exam" actually costs. Two measured, no-quality-
-loss changes cut the actual bill:
+**This means don't blindly trust discrete math answers either — spot-check
+them, same advice as every other provider/mode in this README** — o4-mini is
+a clear improvement over gpt-4o for this content, not a guarantee.
+
+**API quirks this required fixing, in case you switch models yourself.**
+o-series models and `gpt-5` both reject the `max_tokens` parameter outright
+("Unsupported parameter") — they require `max_completion_tokens` instead.
+`gpt-4o` accepts `max_completion_tokens` too, so the provider now sends that
+parameter name unconditionally rather than branching per model.
+`max_completion_tokens` also has to budget for hidden reasoning tokens (billed,
+but never appear in the visible output) — reasoning models pay most of their
+token cost here, not on the JSON itself (measured ~2000-2900 total completion
+tokens for an 8-to-20-question discrete-math batch, mostly a fixed per-call
+reasoning overhead rather than scaling linearly with question count). The
+token budget (`estimateMaxTokens` in `lib/generateExam.js`) was raised well
+past what plain chat models need specifically so a reasoning model can't hit
+the ceiling mid-thought and return nothing (which is what happened to `gpt-5`
+in testing) — it's a ceiling, not a cost, so this doesn't spend anything extra
+on models that don't need it.
+
+Uses OpenAI's JSON mode (`response_format: {type: "json_object"}`) plus the
+same object-wrapper schema and validate-then-retry-once logic as the other
+two providers.
+
+**Token/cost efficiency.** The server logs real per-call usage — including
+reasoning tokens on models that report them — and running session cost to the
+console (`[openai] 338 in + 407 out [192 reasoning] = 745 tokens (~$0.0049,
+session total ~$0.0249)`) — no separate dashboard needed to see what a click
+of "Generate New Exam" actually costs. Some history on getting this number
+down, from when `gpt-4o` was still the default:
 - **Explicit conciseness instruction** in the system prompt (one sentence per
-  question where possible, tight options, no filler) — cut output tokens
-  (the expensive side: output is priced 4x input on `gpt-4o`) from 750→407
-  per section on a live test, no drop in spot-checked correctness.
+  question where possible, tight options, no filler) — cut output tokens from
+  750→407 per section on a `gpt-4o` test, no drop in spot-checked correctness.
 - **Trimmed the recent-questions dedup sample from 40→15** — the last 25
   items were adding ~800 input tokens per section for an established user
-  with no measurable dedup benefit; 15 recent examples is already enough
-  signal to steer the model away from repeats.
-- Net measured result, real app run: **a full 50-question exam dropped from
-  ~$0.0495 to ~$0.032 (~35%)** for a fresh user, ~26% for an established one
-  with a full dedup list. `max_tokens` was also recalibrated down to match
-  the new shorter output (a safety ceiling, not itself a cost — only tokens
-  actually generated are billed) but kept with real headroom since that
-  prompt is shared with the Ollama/Anthropic paths, which may not shrink
-  output as reliably as `gpt-4o` did.
-- Cheaper model tiers exist if you want to go further —
-  `gpt-4o-mini` is roughly **16x cheaper** than `gpt-4o`
-  ($0.15/$0.60 vs $2.50/$10.00 per 1M input/output tokens) — but that
-  tradeoff hasn't been quality-tested here the way `gpt-4o` was, so it isn't
-  the default. Set `OPENAI_MODEL=gpt-4o-mini` in `.env` to try it; the same
-  spot-check-your-answers advice applies until someone verifies it the way
-  `llama3:8b` was.
+  with no measurable dedup benefit.
+- Net measured result on `gpt-4o` at the time: a full 50-question exam
+  dropped from ~$0.0495 to ~$0.032 (~35%) for a fresh user. **This doesn't
+  carry over to `o4-mini`** — reasoning tokens make the new default cost
+  roughly 2x `gpt-4o` per exam in practice (measured: a full 50-question
+  adaptive exam across all 7 sections ran ~$0.087 on `o4-mini` vs. `gpt-4o`'s
+  ~$0.03-0.05), which is the real tradeoff for the correctness improvement
+  above. If cost matters more than discrete-math correctness for your use,
+  set `OPENAI_MODEL=gpt-4o` (or `gpt-4o-mini`, ~16x cheaper again but
+  unverified here) back in `.env`.
+- **o-series pricing is genuinely uncertain as of 2026-07** — two sources
+  checked gave different numbers for `o4-mini` ($0.55/$2.20 vs. $1.10/$4.40
+  per 1M input/output tokens; OpenAI revises o-series pricing often). The
+  console estimate uses the higher figure so it errs toward overestimating,
+  not under — check your actual OpenAI usage dashboard for ground truth.
 
 ## How adaptive generation works
 
@@ -150,17 +182,18 @@ loss changes cut the actual bill:
    computes their accuracy per section (sections with no history default to a
    neutral 50%).
 2. It allocates the requested number of questions (default 50, see "Choosing
-   how many questions" below) across the 6 sections: every section gets a
-   floor of up to 4 questions (scaled down automatically if the total is too
-   small to support that — e.g. a 6-question exam floors at 1/section instead
-   of 4), and the remainder is distributed proportionally to `1 - accuracy` —
-   weaker sections get more. If you picked a specific section in the
-   dashboard's "Section" dropdown instead of "All Sections," this step is
-   skipped and every question goes to that one section — see "Section-focused
-   exams" below.
-3. It fires one call per section in the allocation (in parallel), each with a
-   system prompt describing the section, style, and difficulty, plus a sample
-   of up to 15 recently-seen question texts for that section to avoid
+   how many questions" below) across the active sections — every section you
+   have checked in the dashboard's "Sections" picker, all of them by default.
+   Every active section gets a floor of up to 4 questions (scaled down
+   automatically if the total is too small to support that — e.g. a
+   6-question exam floors at 1/section instead of 4), and the remainder is
+   distributed proportionally to `SECTION_EXAM_WEIGHT × (1 - accuracy)` —
+   sections that are both more heavily represented on the real exam *and*
+   ones you're worse at get more new questions. See "Section selection"
+   below for what happens when you uncheck some sections.
+3. It fires one call per active section (in parallel), each with a system
+   prompt describing the section, style, and difficulty, plus a sample of up
+   to 15 recently-seen question texts for that section to avoid
    near-duplicates. If study material exists for that section (see below),
    the prompt also includes a bounded excerpt from it and an instruction to
    ground some or all questions in it.
@@ -175,7 +208,7 @@ loss changes cut the actual bill:
 
 ### Choosing how many questions
 
-The dashboard's "Questions to generate" field controls the size of the next
+The dashboard's "# Questions" field controls the size of the next
 **Generate New Exam** call — defaults to 50, accepts 5-150. It has no effect
 on **Take Practice Exam**, which always uses whatever bank (default or
 last-generated) is currently loaded, unfiltered by count — that button's
@@ -184,22 +217,72 @@ everywhere. Validated both client-side (the number input's `min`/`max`) and
 server-side (clamped again in `server.js`, since client-side bounds are only
 a UX nicety, never trusted alone).
 
-### Section-focused exams
+### Section selection
 
-The dashboard's "Section" dropdown defaults to "All Sections (Adaptive)" but
-can be locked to any one section — for "just quiz me on Python" instead of
-the usual 6-way spread. Applies to both buttons:
+The dashboard's "Sections" checkboxes default to all checked (the full
+adaptive spread across every section, weighted per `SECTION_EXAM_WEIGHT`) but
+can be narrowed to any subset — uncheck everything except Discrete Math for
+"just quiz me on discrete math," or check Discrete Math + C++ + Linux/CLI to
+mirror what the real exam is actually reported to cover (see "Study
+materials" below for where that intel came from). `all` / `none` links next
+to the label toggle every box at once; unchecking every box and trying to
+generate shows an alert and refuses rather than silently sending an empty
+request. Applies to both buttons:
 
 - **Take Practice Exam** filters whatever bank is currently loaded (the
-  default question set, or the last AI-generated exam) down to that section
-  client-side — no API call, works offline from the static bank.
-- **Generate New Exam** sends `focusSection` to the backend, which allocates
-  every requested question to that section instead of spreading them
-  adaptively.
+  default question set, or the last AI-generated exam) down to the checked
+  sections client-side — no API call, works offline from the static bank. If
+  the currently-loaded bank has no questions in any checked section (e.g. you
+  just generated a Discrete-Math-only exam, then check only "Networking"), it
+  says so rather than starting a broken empty exam.
+- **Generate New Exam** sends `focusSections` (an array of section indices,
+  or omitted entirely when every box is checked) to the backend, which
+  confines the weighted allocation to just those sections instead of
+  spreading it across all of them — narrower pool, same weighting logic.
 
-The chosen section is sticky: retaking an exam (`↻ Retake Exam` on the
-results screen) reuses whatever focus was active for the exam you just took,
-not whatever the dropdown currently shows.
+The chosen selection is sticky: retaking an exam (`↻ Retake Exam` on the
+results screen) reuses whatever sections were active for the exam you just
+took, not whatever the checkboxes currently show.
+
+### Discrete Math — why it exists and why it's weighted so heavily
+
+Added after a firsthand account of the actual screening (2026-07, secondhand
+via a friend who'd taken it): **"80% discrete math [combinatorics and
+permutations, explicitly not proofs], then some C++ code snippets, OS stuff,
+and Linux commands"** — with `fork()` vs. `vfork()` vs. `clone()` named as an
+example Linux question. That's obviously one account of one exam instance,
+not a guarantee of what you'll see, but it's specific and credible enough to
+act on:
+
+- Added as a 7th section, appended to the end of `SECTION_NAMES` (both
+  `lib/history.js` and `public/index.html` — these two arrays must stay
+  identical and in the same order, since a question's `s` field is a raw
+  index into them; inserting a new section anywhere but the end would
+  silently reassign every already-stored question's section).
+- `SECTION_EXAM_WEIGHT` in `lib/generateExam.js` gives Discrete Math roughly
+  6x the baseline weight of most other sections in adaptive mode (Networking
+  and the less-mentioned sections were trimmed down, not zeroed out — this is
+  one account, not a certainty). A default 50-question adaptive exam lands
+  around 17/50 (~34%) Discrete Math in practice — nowhere near the reported
+  80%, because the per-section floor (guaranteeing every section some
+  presence) eats a fixed chunk of the budget before the weighting kicks in.
+  **If you want to actually mirror an 80/20-ish split, use the Section
+  checkboxes** to narrow generation to just Discrete Math (+ C++/OS/Linux if
+  you want the "some of these too" part) rather than relying on the adaptive
+  default to get there on its own.
+- The static question bank got 14 new hand-authored combinatorics/permutations
+  questions (not AI-generated — written and checked directly, the same
+  correctness bar as everything else in the static bank) and 3 new
+  `fork()`/`vfork()`/`clone()` questions added to Linux/CLI.
+- AI generation for this section gets an extra style instruction
+  (`SECTION_STYLE_NOTES` in `lib/generateExam.js`) steering toward
+  computational counting problems and explicitly away from proofs, graph
+  theory, or formal logic — matching "it's just the combinatorics and
+  permutations... not proofs" from the source account.
+- This is also *why* the OpenAI provider's default model changed to
+  `o4-mini` — see "Choosing a provider" → OpenAI above for the live
+  correctness comparison that motivated it, including a real error it
+  caught in `gpt-4o`'s output and a real (different) error it made itself.
 
 ### Difficulty
 
@@ -239,7 +322,7 @@ Ollama and material-only caveats elsewhere in this README.
 You can feed the generator real source material — a PDF or pasted text — so
 generated questions test *that specific content* instead of (or alongside)
 general knowledge. Manage it from the "Study Materials" card on the
-dashboard: upload a PDF or paste text, assign it to one of the 6 sections,
+dashboard: upload a PDF or paste text, assign it to one of the sections,
 give it an optional title.
 
 **Shared, not per-user.** Unlike practice history, materials are one shared

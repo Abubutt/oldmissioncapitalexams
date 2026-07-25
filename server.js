@@ -92,13 +92,15 @@ app.post('/api/login', (req, res) => {
 
 app.post('/api/generate-exam', requireAccessCode, requireEmail, async (req, res) => {
   try {
-    const { materialMode, focusSection, totalQuestions, difficulty } = req.body || {};
+    const { materialMode, focusSections, totalQuestions, difficulty } = req.body || {};
     const validMode = materialMode === 'material-only' ? 'material-only' : 'blend';
     const validDifficulty = ['easy', 'medium', 'hard'].includes(difficulty) ? difficulty : 'medium';
-    let section = null;
-    if (focusSection !== null && focusSection !== undefined && focusSection !== '') {
-      const n = Number(focusSection);
-      if (Number.isInteger(n) && n >= 0 && n < SECTION_NAMES.length) section = n;
+    let sections = null;
+    if (Array.isArray(focusSections) && focusSections.length > 0) {
+      const valid = [...new Set(focusSections.map(Number))].filter(
+        (n) => Number.isInteger(n) && n >= 0 && n < SECTION_NAMES.length
+      );
+      if (valid.length > 0) sections = valid;
     }
     let count = DEFAULT_TOTAL_QUESTIONS;
     if (totalQuestions !== null && totalQuestions !== undefined && totalQuestions !== '') {
@@ -108,7 +110,7 @@ app.post('/api/generate-exam', requireAccessCode, requireEmail, async (req, res)
 
     const questions = await generateExam(req.userKey, {
       materialMode: validMode,
-      focusSection: section,
+      focusSections: sections,
       totalQuestions: count,
       difficulty: validDifficulty
     });

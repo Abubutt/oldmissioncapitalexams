@@ -236,6 +236,20 @@ material attached:
 Sections with no material attached are completely unaffected — same
 general-knowledge generation as before this feature existed.
 
+**Material-only is a strong instruction, not a hard guarantee.** There's no
+schema-level enforcement making every question reference the excerpt — it's
+prompt instruction only, same as everything else this app asks the model to
+do. Tested live against `gpt-4o` with a small (~3000-char, 2-chunk) source
+document short enough that both chunks — effectively the whole document —
+were included in the prompt every time: one generation run produced 3-4
+questions on topics never mentioned in the source (device drivers, deadlock
+prevention) despite the instruction saying not to pad with unrelated
+content; an identical follow-up run at a smaller count stayed fully
+grounded. Run-to-run variance, not a reproducible bug — but don't treat
+"material only" as a hard filter, especially with a short source document.
+Larger source documents give the model more to work with and are likely to
+hold up better.
+
 **PDF extraction** uses `pdf-parse` (text only — no OCR, so a scanned image
 PDF with no text layer will extract as empty). Non-PDF files aren't
 accepted; paste the text instead. Uploads are capped at 15MB (checked before

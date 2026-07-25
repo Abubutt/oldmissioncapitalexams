@@ -40,6 +40,9 @@
     padding:4px 10px;border:1px solid var(--amber-dim);border-radius:4px;background:#1a1408;
   }
   .timer.low{color:var(--red);border-color:#5c2320;background:#1c0f0e;}
+  .timer.paused{color:var(--text-dim);border-color:var(--line);background:var(--panel-2);}
+  .timer-wrap{display:flex;align-items:center;gap:8px;}
+  .timer-btn{padding:8px 12px;font-size:16px;line-height:1;}
 
   /* ===== Exam controls (generate new exam) ===== */
   .examctl{
@@ -75,6 +78,7 @@
   /* ===== Question card ===== */
   .card{
     background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:26px;margin-bottom:20px;
+    scroll-margin-top:16px;
   }
   .section-tag{
     display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:1px;
@@ -317,6 +321,17 @@ function startTimer(){
   },1000);
 }
 
+function togglePause(){
+  if(state.submitted) return;
+  if(state.timerId){
+    clearInterval(state.timerId);
+    state.timerId = null;
+  } else {
+    startTimer();
+  }
+  render();
+}
+
 function selectOption(qIdx, optIdx){
   if(state.submitted) return;
   state.answers[qIdx] = optIdx;
@@ -326,7 +341,8 @@ function selectOption(qIdx, optIdx){
 function goTo(i){
   state.current = Math.max(0, Math.min(QUESTIONS.length-1, i));
   render();
-  window.scrollTo({top:0, behavior:'smooth'});
+  const card = document.getElementById('questionCard');
+  if(card) card.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
 async function submitExam(){
@@ -361,8 +377,8 @@ function startExam(){
   if(oldTimerId) clearInterval(oldTimerId);
   state = {current:0, answers:new Array(QUESTIONS.length).fill(null), submitted:false, timeLeft: TOTAL_SECONDS, timerId:null, reviewFilter:'all', generating:false};
   appView = 'exam';
-  render();
   startTimer();
+  render();
 }
 
 async function generateNewExam(){
@@ -394,8 +410,8 @@ async function generateNewExam(){
     if(oldTimerId) clearInterval(oldTimerId);
     state = {current:0, answers:new Array(QUESTIONS.length).fill(null), submitted:false, timeLeft: TOTAL_SECONDS, timerId:null, reviewFilter:'all', generating:false};
     appView = 'exam';
-    render();
     startTimer();
+    render();
   }catch(err){
     alert('Network error while generating a new exam: ' + err.message);
     state.generating = false;
@@ -436,6 +452,7 @@ function esc(s){
 function renderExamCtl(){
   return `
     <div class="examctl">
+      <button class="btn ghost" onclick="goToDashboard()">📊 Dashboard</button>
       <button class="btn genbtn" onclick="generateNewExam()" ${state.generating?'disabled':''}>
         ${state.generating ? '<span class="spin">&#9696;</span> Generating…' : '&#9889; Generate New Exam'}
       </button>
@@ -501,7 +518,10 @@ function renderExam(){
             <div class="brand-title">Jr. Software Engineer — Practice Exam</div>
           </div>
         </div>
-        <div id="timerDisplay" class="timer mono">${fmtTime(state.timeLeft)}</div>
+        <div class="timer-wrap">
+          <div id="timerDisplay" class="timer mono ${state.timerId?'':'paused'}">${fmtTime(state.timeLeft)}</div>
+          <button class="btn ghost timer-btn" onclick="togglePause()" title="${state.timerId?'Pause timer':'Resume timer'}">${state.timerId?'⏸':'▶'}</button>
+        </div>
       </div>
 
       ${renderExamCtl()}
@@ -520,7 +540,7 @@ function renderExam(){
         `).join('')}
       </div>
 
-      <div class="card">
+      <div class="card" id="questionCard">
         <div class="section-tag mono">${SECTIONS[q.s]}</div>
         <div class="qnum mono">QUESTION ${state.current+1} OF ${QUESTIONS.length}</div>
         <div class="qtext">${esc(q.q)}${q.code?`<span class="codeblock">${esc(q.code)}</span>`:''}</div>
@@ -593,7 +613,6 @@ function renderExam(){
         <button class="btn ${state.reviewFilter==='all'?'primary':''}" onclick="setFilter('all')">Review All (${total})</button>
         <button class="btn ${state.reviewFilter==='wrong'?'primary':''}" onclick="setFilter('wrong')">Review Incorrect Only (${total-correct})</button>
         <button class="btn ghost" onclick="startExam()">↻ Retake Exam</button>
-        <button class="btn ghost" onclick="goToDashboard()">📊 View All Exams</button>
       </div>
 
       <div id="reviewList"></div>
@@ -606,6 +625,9 @@ function renderExam(){
 }
 
 function goToDashboard(){
+  if(appView === 'exam' && !state.submitted){
+    if(!confirm('Leave this exam without finishing? Your answers for this attempt will not be saved. Click OK to leave, or Cancel to keep going.')) return;
+  }
   const oldTimerId = state.timerId;
   if(oldTimerId) clearInterval(oldTimerId);
   appView = 'dashboard';

@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>OMC Practice Exam</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+  :root{
+    --bg: #0a0d0f;
+    --panel: #10151a;
+    --panel-2: #151b21;
+    --line: #232b31;
+    --amber: #ffb020;
+    --amber-dim: #a87418;
+    --green: #35d68a;
+    --red: #ff5f56;
+    --text: #d9e0e5;
+    --text-dim: #7c8a94;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;}
+  #root{max-width:960px;margin:0 auto;padding:28px 20px 80px;}
+
+  .mono{font-family:'IBM Plex Mono',monospace;}
+
+  /* ===== Header / Terminal bar ===== */
+  .termbar{
+    display:flex;justify-content:space-between;align-items:center;
+    border:1px solid var(--line); background:var(--panel);
+    padding:14px 18px; border-radius:6px; margin-bottom:18px;
+  }
+  .termbar .brand{display:flex;align-items:center;gap:10px;}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);}
+  .brand-name{font-family:'IBM Plex Mono',monospace;font-weight:600;letter-spacing:0.5px;font-size:13px;color:var(--text-dim);}
+  .brand-title{font-weight:600;font-size:15px;}
+  .timer{
+    font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600;color:var(--amber);
+    letter-spacing:1px;
+    padding:4px 10px;border:1px solid var(--amber-dim);border-radius:4px;background:#1a1408;
+  }
+  .timer.low{color:var(--red);border-color:#5c2320;background:#1c0f0e;}
+
+  /* ===== Progress ===== */
+  .progress-wrap{margin-bottom:22px;}
+  .progress-label{display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-dim);margin-bottom:6px;}
+  .progress-track{height:6px;background:var(--panel-2);border-radius:3px;overflow:hidden;border:1px solid var(--line);}
+  .progress-fill{height:100%;background:linear-gradient(90deg,var(--amber-dim),var(--amber));transition:width .25s ease;}
+
+  /* ===== Nav grid ===== */
+  .navgrid{
+    display:grid;grid-template-columns:repeat(10,1fr);gap:6px;margin-bottom:24px;
+  }
+  .navbtn{
+    aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;
+    font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);
+    background:var(--panel-2);border:1px solid var(--line);border-radius:4px;cursor:pointer;
+  }
+  .navbtn:hover{border-color:var(--amber-dim);}
+  .navbtn.answered{background:#132018;color:var(--green);border-color:#1f3d2c;}
+  .navbtn.current{border-color:var(--amber);color:var(--amber);box-shadow:0 0 0 1px var(--amber) inset;}
+
+  /* ===== Question card ===== */
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:26px;margin-bottom:20px;
+  }
+  .section-tag{
+    display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:1px;
+    text-transform:uppercase;color:var(--amber);border:1px solid var(--amber-dim);
+    padding:3px 8px;border-radius:3px;margin-bottom:14px;background:#1a1408;
+  }
+  .qnum{font-family:'IBM Plex Mono',monospace;color:var(--text-dim);font-size:13px;margin-bottom:4px;}
+  .qtext{font-size:17px;line-height:1.55;margin:6px 0 20px;white-space:pre-wrap;}
+  .qtext code, .codeblock{
+    display:block;background:#05070a;border:1px solid var(--line);border-radius:6px;
+    padding:14px 16px;font-family:'IBM Plex Mono',monospace;font-size:13.5px;color:#9fd8b3;
+    margin-top:10px;overflow-x:auto;white-space:pre;
+  }
+
+  .options{display:flex;flex-direction:column;gap:10px;}
+  .option{
+    display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border:1px solid var(--line);
+    border-radius:6px;cursor:pointer;background:var(--panel-2);transition:border-color .15s, background .15s;
+  }
+  .option:hover{border-color:var(--amber-dim);}
+  .option.selected{border-color:var(--amber);background:#1a1408;}
+  .option .letter{
+    font-family:'IBM Plex Mono',monospace;font-weight:600;color:var(--text-dim);
+    width:22px;height:22px;flex:0 0 22px;border:1px solid var(--line);border-radius:4px;
+    display:flex;align-items:center;justify-content:center;font-size:12px;
+  }
+  .option.selected .letter{color:var(--amber);border-color:var(--amber);}
+  .option .otext{font-size:14.5px;line-height:1.5;padding-top:1px;}
+
+  /* review coloring */
+  .option.correct{border-color:var(--green);background:#0f1f16;}
+  .option.correct .letter{color:var(--green);border-color:var(--green);}
+  .option.incorrect{border-color:var(--red);background:#211110;}
+  .option.incorrect .letter{color:var(--red);border-color:var(--red);}
+
+  /* ===== Controls ===== */
+  .controls{display:flex;justify-content:space-between;gap:12px;margin-top:8px;}
+  .btn{
+    font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;letter-spacing:0.3px;
+    padding:11px 18px;border-radius:6px;border:1px solid var(--line);background:var(--panel-2);
+    color:var(--text);cursor:pointer;transition:all .15s;
+  }
+  .btn:hover:not(:disabled){border-color:var(--amber-dim);}
+  .btn:disabled{opacity:0.35;cursor:not-allowed;}
+  .btn.primary{background:var(--amber);color:#1a1408;border-color:var(--amber);}
+  .btn.primary:hover:not(:disabled){background:#ffc04d;}
+  .btn.ghost{background:transparent;}
+
+  .submitbar{display:flex;justify-content:center;margin-top:8px;}
+  .submitbar .btn{padding:13px 32px;font-size:14px;}
+
+  /* ===== Results ===== */
+  .results-hero{
+    text-align:center;padding:34px 20px;border:1px solid var(--line);border-radius:8px;background:var(--panel);margin-bottom:24px;
+  }
+  .score-big{font-family:'IBM Plex Mono',monospace;font-size:56px;font-weight:700;color:var(--amber);line-height:1;}
+  .score-sub{color:var(--text-dim);margin-top:8px;font-size:14px;}
+  .verdict{margin-top:14px;font-size:15px;font-weight:600;}
+  .verdict.pass{color:var(--green);}
+  .verdict.fail{color:var(--red);}
+
+  .section-breakdown{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:24px;}
+  .sb-card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px;}
+  .sb-name{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;}
+  .sb-score{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;}
+  .sb-bar{height:4px;background:var(--panel-2);border-radius:2px;margin-top:8px;overflow:hidden;}
+  .sb-fill{height:100%;background:var(--green);}
+
+  .review-toggle{display:flex;justify-content:center;margin-bottom:20px;gap:10px;}
+
+  .footer-note{color:var(--text-dim);font-size:12px;text-align:center;margin-top:30px;font-family:'IBM Plex Mono',monospace;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+const SECTIONS = ["C++","Python","Data Structures & Algorithms","Operating Systems","Linux / CLI","Networking & General CS"];
+
+const QUESTIONS = [
+// ---- C++ (1-10)
+{s:0, q:"What is the output of the following code?", code:"int x = 5;\nint& y = x;\ny = 10;\ncout << x;", opts:["5","10","Compile error","Undefined behavior"], a:1},
+{s:0, q:"Which of the following correctly describes `const int* p`?", opts:["p is a constant pointer to an int","p is a pointer to a constant int","Both p and the int it points to are constant","Neither p nor the int is constant"], a:1},
+{s:0, q:"What happens when you call `delete` on a pointer twice?", opts:["Nothing, it's safe","Compile error","Undefined behavior (double free)","The second call is silently ignored"], a:2},
+{s:0, q:"Which container in the C++ STL provides average O(1) lookup by key?", opts:["std::map","std::unordered_map","std::vector","std::set"], a:1},
+{s:0, q:"What is the primary purpose of a virtual destructor in C++?", opts:["To speed up object destruction","To ensure derived class destructors are called when deleting via a base class pointer","To prevent memory leaks in stack-allocated objects","To make a class non-instantiable"], a:1},
+{s:0, q:"What does RAII stand for and what is it used for?", opts:["Resource Allocation Is Immediate — compile-time optimization","Resource Acquisition Is Initialization — ties resource lifetime to object lifetime","Runtime Allocation and Initialization Interface — dynamic linking","Reference and Iterator Invalidation — STL safety"], a:1},
+{s:0, q:"What is the difference between std::vector and std::list?", opts:["vector uses contiguous memory; list is a doubly-linked list","vector is slower for random access than list","list supports operator[], vector does not","There is no meaningful difference"], a:0},
+{s:0, q:"What does the `mutable` keyword allow?", opts:["A member variable to be modified even in a const member function","A variable to change its type at runtime","A function to be overridden","A pointer to be reassigned"], a:0},
+{s:0, q:"Which of the following will cause a memory leak?", code:"void foo() {\n    int* p = new int(5);\n    if (p == nullptr) return;\n    // ... no delete anywhere\n}", opts:["No leak — the OS reclaims it when foo() returns","Yes, memory leak — p goes out of scope without delete","No leak — int doesn't need to be deleted","Compile error"], a:1},
+{s:0, q:"What is move semantics primarily used for in C++11+?", opts:["Copying objects more safely","Avoiding unnecessary deep copies by transferring resources","Moving code between files","Reordering function arguments"], a:1},
+
+// ---- Python (11-20)
+{s:1, q:"What is the output?", code:"def f(a, b=[]):\n    b.append(a)\n    return b\n\nprint(f(1))\nprint(f(2))", opts:["[1] then [2]","[1] then [1, 2]","Error on second call","[1] then [1, 1]"], a:1},
+{s:1, q:"What does the GIL (Global Interpreter Lock) primarily affect?", opts:["Disk I/O performance","True parallel execution of Python bytecode across threads","Memory allocation speed","Import statement resolution"], a:1},
+{s:1, q:"What is the difference between a list and a tuple in Python?", opts:["Lists are immutable, tuples are mutable","Tuples are immutable, lists are mutable","Both are immutable","Both are mutable"], a:1},
+{s:1, q:"What does *args and **kwargs allow in a function signature?", opts:["Only positional arguments","Variable-length positional and keyword arguments, respectively","Multiplication and exponentiation operators","Type annotations"], a:1},
+{s:1, q:"What is a Python generator?", opts:["A function that returns a list immediately","A function that uses yield to produce values lazily, one at a time","A class decorator","A built-in module for random number generation"], a:1},
+{s:1, q:"What does this print?", code:"print(0.1 + 0.2 == 0.3)", opts:["True","False","Error","None"], a:1},
+{s:1, q:"Which statement about Python's `is` vs `==` is correct?", opts:["is compares values; == compares identity","is compares identity (same object in memory); == compares value equality","They are always interchangeable","is only works on integers"], a:1},
+{s:1, q:"What is a decorator in Python?", opts:["A comment style","A function that wraps another function to extend its behavior","A way to declare constants","A type of loop"], a:1},
+{s:1, q:"What does list comprehension `[x**2 for x in range(5) if x % 2 == 0]` produce?", opts:["[0, 4, 16]","[0, 1, 4, 9, 16]","[1, 9]","[0, 2, 4]"], a:0},
+{s:1, q:"What's the time complexity of checking membership (`in`) in a Python set vs a list?", opts:["O(1) average for both","O(n) for both","O(1) average for set, O(n) for list","O(log n) for set, O(1) for list"], a:2},
+
+// ---- DSA (21-32)
+{s:2, q:"What is the average time complexity of searching in a balanced binary search tree?", opts:["O(1)","O(log n)","O(n)","O(n log n)"], a:1},
+{s:2, q:"Which sorting algorithm has the best average-case time complexity?", opts:["Bubble sort — O(n²)","Insertion sort — O(n²)","Merge sort — O(n log n)","Selection sort — O(n²)"], a:2},
+{s:2, q:"What data structure is best suited to implement a LIFO (last-in-first-out) structure?", opts:["Queue","Stack","Linked list (in general)","Priority queue"], a:1},
+{s:2, q:"What is the worst-case time complexity of inserting into a hash table?", opts:["O(1)","O(log n)","O(n) — due to collisions/resizing","O(n log n)"], a:2},
+{s:2, q:"Which traversal of a binary search tree visits nodes in sorted order?", opts:["Pre-order","Post-order","In-order","Level-order (BFS)"], a:2},
+{s:2, q:"What is the space complexity of a recursive Fibonacci implementation without memoization, in terms of call stack depth?", opts:["O(1)","O(log n)","O(n)","O(2^n)"], a:2},
+{s:2, q:"A heap is best described as:", opts:["A sorted array","A complete binary tree satisfying the heap property (parent ≥ or ≤ children)","A hash-based structure","A doubly linked list"], a:1},
+{s:2, q:"What is the time complexity of Dijkstra's algorithm using a binary heap?", opts:["O(V)","O(V + E)","O((V + E) log V)","O(V²) always, regardless of implementation"], a:2},
+{s:2, q:"Which data structure would you use to detect a cycle in a linked list efficiently?", opts:["A hash set of visited nodes, or Floyd's cycle detection (slow/fast pointers)","A stack only","A binary search tree","A priority queue"], a:0},
+{s:2, q:"What is the amortized time complexity of push_back on a dynamic array (e.g., std::vector or Python list)?", opts:["O(n)","O(log n)","O(1) amortized","O(n²)"], a:2},
+{s:2, q:"Dynamic programming is most useful when a problem has:", opts:["No repeated subproblems","Overlapping subproblems and optimal substructure","Only greedy choices","Purely random inputs"], a:1},
+{s:2, q:"What is the primary tradeoff of using a hash map over a balanced BST for key-value storage?", opts:["Hash maps guarantee sorted order; BSTs don't","Hash maps offer faster average lookup (O(1)) but no ordering, while BSTs offer O(log n) with sorted order","BSTs are always faster","There is no tradeoff"], a:1},
+
+// ---- OS (33-40)
+{s:3, q:"What is the difference between a process and a thread?", opts:["They are identical","A process has its own memory space; threads within a process share memory","Threads have separate memory spaces; processes share memory","A process can only run one thread ever"], a:1},
+{s:3, q:"What is a deadlock?", opts:["When a program crashes due to a segmentation fault","When two or more processes/threads are stuck waiting on each other indefinitely for resources","When memory usage exceeds available RAM","When a process finishes execution too quickly"], a:1},
+{s:3, q:"What is the purpose of a mutex?", opts:["To speed up multithreaded code","To ensure mutual exclusion — only one thread accesses a critical section at a time","To allocate memory dynamically","To schedule processes on the CPU"], a:1},
+{s:3, q:"What is virtual memory?", opts:["Memory that doesn't physically exist","An abstraction that gives each process the illusion of its own contiguous address space, backed by RAM and disk","A type of cache memory","Memory used only by the OS kernel"], a:1},
+{s:3, q:"What is a race condition?", opts:["A CPU scheduling algorithm","An outcome that depends on the unpredictable timing/interleaving of concurrent operations","A type of memory leak","A network latency issue"], a:1},
+{s:3, q:"What does context switching refer to?", opts:["Switching between programming languages","The CPU saving/restoring state to switch execution between processes or threads","Switching between disk partitions","Changing user permissions"], a:1},
+{s:3, q:"What is the difference between a semaphore and a mutex?", opts:["They are exactly the same","A mutex allows only one owner/holder; a semaphore can allow a set number of concurrent accesses (counting)","Semaphores are only used in single-threaded programs","A mutex is a hardware device"], a:1},
+{s:3, q:"What causes a segmentation fault?", opts:["Successful program termination","Accessing memory the process doesn't have permission to access (e.g., null/dangling pointer, out-of-bounds)","A syntax error at compile time","Running out of CPU time"], a:1},
+
+// ---- Linux/CLI (41-46)
+{s:4, q:"What does the command `grep -r \"TODO\" .` do?", opts:["Deletes all files containing \"TODO\"","Recursively searches the current directory for lines containing \"TODO\"","Replaces \"TODO\" with an empty string","Counts the number of files"], a:1},
+{s:4, q:"What does `chmod 755 file.sh` set the permissions to?", opts:["Read-only for everyone","rwx for owner, rx for group, rx for others","rwx for everyone","No permissions for anyone"], a:1},
+{s:4, q:"What does the pipe operator | do in a command like `ls -l | grep \".txt\"`?", opts:["Redirects output to a file","Sends the output of the first command as input to the second command","Runs both commands in parallel independently","Appends output to a log"], a:1},
+{s:4, q:"What does `chmod +x script.sh` do?", opts:["Deletes the script","Makes the file executable","Makes the file read-only","Changes the file's owner"], a:1},
+{s:4, q:"What is the difference between > and >> in bash redirection?", opts:["No difference","> overwrites the file; >> appends to it","> appends; >> overwrites","> is for input, >> is for output"], a:1},
+{s:4, q:"What does the command `ps aux | grep python` typically do?", opts:["Installs Python","Lists all running processes and filters for ones related to \"python\"","Kills all Python processes","Shows Python version information"], a:1},
+
+// ---- Networking/General (47-50)
+{s:5, q:"What is the primary difference between TCP and UDP?", opts:["TCP is connectionless; UDP is connection-oriented","TCP guarantees reliable, ordered delivery; UDP is faster but unreliable/unordered","They are functionally identical","UDP is always slower than TCP"], a:1},
+{s:5, q:"What HTTP status code indicates a successful request?", opts:["404","500","200","301"], a:2},
+{s:5, q:"What is the purpose of DNS?", opts:["To encrypt network traffic","To translate human-readable domain names into IP addresses","To compress data for transmission","To manage firewall rules"], a:1},
+{s:5, q:"In a client-server model, what does \"latency\" refer to?", opts:["The total amount of data transferred","The time delay between a request being sent and a response being received","The number of concurrent connections","The bandwidth of the connection"], a:1},
+];
+
+const TOTAL_SECONDS = 50 * 60;
+let state = {
+  current: 0,
+  answers: new Array(QUESTIONS.length).fill(null),
+  submitted: false,
+  timeLeft: TOTAL_SECONDS,
+  timerId: null,
+  reviewFilter: 'all' // all | wrong
+};
+
+function letter(i){ return String.fromCharCode(65+i); }
+
+function fmtTime(s){
+  const m = Math.floor(s/60), sec = s%60;
+  return String(m).padStart(2,'0')+":"+String(sec).padStart(2,'0');
+}
+
+function startTimer(){
+  if(state.timerId) return;
+  state.timerId = setInterval(()=>{
+    if(state.submitted){ clearInterval(state.timerId); return; }
+    state.timeLeft--;
+    if(state.timeLeft <= 0){
+      state.timeLeft = 0;
+      clearInterval(state.timerId);
+      submitExam();
+    }
+    renderTimerOnly();
+  },1000);
+}
+
+function selectOption(qIdx, optIdx){
+  if(state.submitted) return;
+  state.answers[qIdx] = optIdx;
+  render();
+}
+
+function goTo(i){
+  state.current = Math.max(0, Math.min(QUESTIONS.length-1, i));
+  render();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function submitExam(){
+  state.submitted = true;
+  if(state.timerId) clearInterval(state.timerId);
+  render();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function retake(){
+  state = {current:0, answers:new Array(QUESTIONS.length).fill(null), submitted:false, timeLeft: TOTAL_SECONDS, timerId:null, reviewFilter:'all'};
+  render();
+  startTimer();
+}
+
+function computeScore(){
+  let correct = 0;
+  const perSection = SECTIONS.map(()=>({correct:0,total:0}));
+  QUESTIONS.forEach((qq,i)=>{
+    perSection[qq.s].total++;
+    if(state.answers[i]===qq.a){ correct++; perSection[qq.s].correct++; }
+  });
+  return {correct, total:QUESTIONS.length, perSection};
+}
+
+function renderTimerOnly(){
+  const el = document.getElementById('timerDisplay');
+  if(!el) return;
+  el.textContent = fmtTime(state.timeLeft);
+  el.className = 'timer mono' + (state.timeLeft <= 120 ? ' low' : '');
+}
+
+function esc(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function render(){
+  const root = document.getElementById('root');
+  const answeredCount = state.answers.filter(a=>a!==null).length;
+
+  if(!state.submitted){
+    const q = QUESTIONS[state.current];
+    const pct = Math.round((answeredCount/QUESTIONS.length)*100);
+
+    root.innerHTML = `
+      <div class="termbar">
+        <div class="brand">
+          <div class="dot"></div>
+          <div>
+            <div class="brand-name mono">OLD MISSION CAPITAL</div>
+            <div class="brand-title">Jr. Software Engineer — Practice Exam</div>
+          </div>
+        </div>
+        <div id="timerDisplay" class="timer mono">${fmtTime(state.timeLeft)}</div>
+      </div>
+
+      <div class="progress-wrap">
+        <div class="progress-label">
+          <span>ANSWERED: ${answeredCount} / ${QUESTIONS.length}</span>
+          <span>${pct}%</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+      </div>
+
+      <div class="navgrid">
+        ${QUESTIONS.map((_,i)=>`
+          <div class="navbtn ${state.answers[i]!==null?'answered':''} ${i===state.current?'current':''}" onclick="goTo(${i})">${i+1}</div>
+        `).join('')}
+      </div>
+
+      <div class="card">
+        <div class="section-tag mono">${SECTIONS[q.s]}</div>
+        <div class="qnum mono">QUESTION ${state.current+1} OF ${QUESTIONS.length}</div>
+        <div class="qtext">${esc(q.q)}${q.code?`<span class="codeblock">${esc(q.code)}</span>`:''}</div>
+        <div class="options">
+          ${q.opts.map((opt,i)=>`
+            <div class="option ${state.answers[state.current]===i?'selected':''}" onclick="selectOption(${state.current},${i})">
+              <div class="letter">${letter(i)}</div>
+              <div class="otext">${esc(opt)}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="controls">
+        <button class="btn ghost" onclick="goTo(${state.current-1})" ${state.current===0?'disabled':''}>← Previous</button>
+        ${state.current < QUESTIONS.length-1
+          ? `<button class="btn primary" onclick="goTo(${state.current+1})">Next →</button>`
+          : `<button class="btn primary" onclick="confirmSubmit()">Submit Exam</button>`
+        }
+      </div>
+
+      <div class="submitbar">
+        <button class="btn" onclick="confirmSubmit()" style="margin-top:20px;">Submit Exam Now (${answeredCount}/${QUESTIONS.length} answered)</button>
+      </div>
+
+      <div class="footer-note">50-minute timed practice · answers are graded locally, nothing is sent anywhere</div>
+    `;
+  } else {
+    const {correct, total, perSection} = computeScore();
+    const pct = Math.round((correct/total)*100);
+    const pass = pct >= 70;
+
+    root.innerHTML = `
+      <div class="termbar">
+        <div class="brand">
+          <div class="dot" style="background:${pass?'var(--green)':'var(--red)'}"></div>
+          <div>
+            <div class="brand-name mono">OLD MISSION CAPITAL</div>
+            <div class="brand-title">Results</div>
+          </div>
+        </div>
+        <div class="timer mono" style="color:var(--text-dim);border-color:var(--line);background:transparent;">TIME USED: ${fmtTime(TOTAL_SECONDS - state.timeLeft)}</div>
+      </div>
+
+      <div class="results-hero">
+        <div class="score-big mono">${correct}/${total}</div>
+        <div class="score-sub mono">${pct}% CORRECT</div>
+        <div class="verdict ${pass?'pass':'fail'}">${pass ? "Strong score — you'd be in good shape for the real thing." : "Below 70% — worth another pass on the weaker sections below."}</div>
+      </div>
+
+      <div class="section-breakdown">
+        ${SECTIONS.map((name,i)=>{
+          const s = perSection[i];
+          const p = Math.round((s.correct/s.total)*100);
+          return `
+            <div class="sb-card">
+              <div class="sb-name mono">${name}</div>
+              <div class="sb-score mono" style="color:${p>=70?'var(--green)':(p>=50?'var(--amber)':'var(--red)')}">${s.correct}/${s.total}</div>
+              <div class="sb-bar"><div class="sb-fill" style="width:${p}%;background:${p>=70?'var(--green)':(p>=50?'var(--amber)':'var(--red)')}"></div></div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      <div class="review-toggle">
+        <button class="btn ${state.reviewFilter==='all'?'primary':''}" onclick="setFilter('all')">Review All (${total})</button>
+        <button class="btn ${state.reviewFilter==='wrong'?'primary':''}" onclick="setFilter('wrong')">Review Incorrect Only (${total-correct})</button>
+        <button class="btn ghost" onclick="retake()">↻ Retake Exam</button>
+      </div>
+
+      <div id="reviewList"></div>
+
+      <div class="footer-note">Graded locally in your browser · good luck on July 28th</div>
+    `;
+
+    renderReview();
+  }
+}
+
+function setFilter(f){
+  state.reviewFilter = f;
+  render();
+}
+
+function renderReview(){
+  const el = document.getElementById('reviewList');
+  if(!el) return;
+  const items = QUESTIONS.map((q,i)=>({q,i})).filter(({q,i})=>{
+    if(state.reviewFilter==='wrong') return state.answers[i] !== q.a;
+    return true;
+  });
+
+  el.innerHTML = items.map(({q,i})=>{
+    const userAns = state.answers[i];
+    return `
+      <div class="card">
+        <div class="section-tag mono">${SECTIONS[q.s]}</div>
+        <div class="qnum mono">QUESTION ${i+1}${userAns===q.a ? ' · CORRECT' : (userAns===null ? ' · SKIPPED' : ' · INCORRECT')}</div>
+        <div class="qtext">${esc(q.q)}${q.code?`<span class="codeblock">${esc(q.code)}</span>`:''}</div>
+        <div class="options">
+          ${q.opts.map((opt,oi)=>{
+            let cls = '';
+            if(oi === q.a) cls = 'correct';
+            else if(oi === userAns) cls = 'incorrect';
+            return `
+              <div class="option ${cls}">
+                <div class="letter">${letter(oi)}</div>
+                <div class="otext">${esc(opt)}</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function confirmSubmit(){
+  const answeredCount = state.answers.filter(a=>a!==null).length;
+  const unanswered = QUESTIONS.length - answeredCount;
+  if(unanswered > 0){
+    if(!confirm(`You have ${unanswered} unanswered question(s). Submit anyway?`)) return;
+  }
+  submitExam();
+}
+
+render();
+startTimer();
+</script>
+</body>
+</html>

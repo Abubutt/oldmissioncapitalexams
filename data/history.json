@@ -1,0 +1,12 @@
+{
+  "examsTaken": 0,
+  "sections": {
+    "C++": { "totalAnswered": 0, "totalCorrect": 0, "recentQuestions": [] },
+    "Python": { "totalAnswered": 0, "totalCorrect": 0, "recentQuestions": [] },
+    "Data Structures & Algorithms": { "totalAnswered": 0, "totalCorrect": 0, "recentQuestions": [] },
+    "Operating Systems": { "totalAnswered": 0, "totalCorrect": 0, "recentQuestions": [] },
+    "Linux / CLI": { "totalAnswered": 0, "totalCorrect": 0, "recentQuestions": [] },
+    "Networking & General CS": { "totalAnswered": 0, "totalCorrect": 0, "recentQuestions": [] }
+  },
+  "runs": []
+}
